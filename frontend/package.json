@@ -1,0 +1,40 @@
+{
+  "name": "sonar-marketplace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SONAR Protocol - Decentralized Audio Data Marketplace",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@mysten/dapp-kit": "^0.19.7",
+    "@mysten/sui": "^1.43.2",
+    "@mysten/sui.js": "^0.54.1",
+    "@tanstack/react-query": "^5.90.5",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.24",
+    "graphql": "^16.11.0",
+    "graphql-request": "^7.3.1",
+    "next": "^14.2.33",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.3.1",
+    "wavesurfer.js": "^7.11.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@types/react": "^19.2.2",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.38.0",
+    "eslint-config-next": "^16.0.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.16",
+    "typescript": "^5.9.3"
+  }
+}
