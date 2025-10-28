@@ -151,6 +151,83 @@
         rgba(255, 255, 255, 0.03) 3px
       );
   }
+
+  /* Sonar CSS Fallback Animations */
+  .sonar-fallback-animation {
+    position: relative;
+    background: radial-gradient(
+      circle at center,
+      rgba(26, 164, 217, 0.1) 0%,
+      transparent 70%
+    );
+  }
+
+  .sonar-fallback-animation::before,
+  .sonar-fallback-animation::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(26, 164, 217, 0.3);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .sonar-fallback-animation::before {
+    width: 40%;
+    height: 40%;
+    animation: sonarPulseRing 3s ease-out infinite;
+  }
+
+  .sonar-fallback-animation::after {
+    width: 60%;
+    height: 60%;
+    animation: sonarPulseRing 3s ease-out infinite 1.5s;
+  }
+
+  .sonar-scanner-fallback {
+    position: relative;
+    background: radial-gradient(
+      circle at center,
+      rgba(9, 46, 77, 0.8) 0%,
+      rgba(10, 23, 42, 0.9) 100%
+    );
+  }
+
+  .sonar-scanner-fallback::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: conic-gradient(
+      from 0deg at center,
+      transparent 0deg,
+      transparent 270deg,
+      rgba(26, 164, 217, 0.4) 315deg,
+      rgba(116, 228, 255, 0.6) 345deg,
+      transparent 360deg
+    );
+    animation: radarSweep 4s linear infinite;
+  }
+
+  .sonar-scanner-fallback::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 80%;
+    height: 80%;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(26, 164, 217, 0.2);
+    border-radius: 50%;
+    box-shadow:
+      0 0 0 1px rgba(26, 164, 217, 0.1),
+      inset 0 0 20px rgba(26, 164, 217, 0.1);
+  }
+
+  .animate-pulse-slow {
+    animation: pulseSlow 2s ease-in-out infinite;
+  }
 }
 
 @keyframes sweep {
@@ -170,6 +247,40 @@
   100% {
     transform: scale(2);
     opacity: 0;
+  }
+}
+
+@keyframes sonarPulseRing {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes radarSweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulseSlow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
   }
 }
 

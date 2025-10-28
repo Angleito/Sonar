@@ -2,12 +2,17 @@ import Link from 'next/link';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { SignalBadge } from '@/components/ui/SignalBadge';
+import { SonarBackground } from '@/components/animations/SonarBackground';
+import { SonarScanner } from '@/components/animations/SonarScanner';
 
 export default function HomePage() {
   return (
-    <main className="relative z-10 min-h-screen">
+    <main className="relative min-h-screen">
+      {/* Animated Sonar Background */}
+      <SonarBackground opacity={0.3} intensity={0.6} />
+
       {/* Hero Section */}
-      <div className="container mx-auto px-6 py-20">
+      <div className="relative z-10 container mx-auto px-6 py-20">
         <div className="max-w-4xl mx-auto text-center space-y-8">
           {/* Logo/Title */}
           <div className="space-y-4">
@@ -78,14 +83,27 @@ export default function HomePage() {
           </GlassCard>
         </div>
 
-        {/* Stats Preview - Will be dynamic later */}
-        <div className="mt-20 max-w-4xl mx-auto">
+        {/* Stats Preview with Sonar Scanner */}
+        <div className="mt-20 max-w-5xl mx-auto">
           <GlassCard glow>
-            <div className="text-center space-y-6">
-              <h2 className="text-2xl font-mono text-sonar-highlight">
-                Current Protocol Status
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                {/* Sonar Scanner Widget */}
+                <div className="flex-shrink-0">
+                  <SonarScanner
+                    size={250}
+                    intensity={0.8}
+                    pulseFrequency={2.5}
+                    showBorder={true}
+                  />
+                </div>
+
+                {/* Stats Grid */}
+                <div className="flex-1 w-full">
+                  <h2 className="text-2xl font-mono text-sonar-highlight mb-6 text-center md:text-left">
+                    Current Protocol Status
+                  </h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <div>
                   <div className="text-3xl font-mono text-sonar-signal">
                     Tier 1
@@ -116,6 +134,8 @@ export default function HomePage() {
                   </div>
                   <div className="text-sm text-sonar-highlight-bright/60 uppercase tracking-wide mt-2">
                     Datasets
+                  </div>
+                </div>
                   </div>
                 </div>
               </div>

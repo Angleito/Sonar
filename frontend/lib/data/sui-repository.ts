@@ -10,13 +10,8 @@ import { GET_DATASETS, GET_DATASET, GET_PROTOCOL_STATS } from '@/lib/sui/queries
  */
 export class SuiRepository implements DataRepository {
   async getDatasets(filter?: DatasetFilter): Promise<Dataset[]> {
-    try {
-      // Try GraphQL first (efficient for list queries)
-      return await this.getDatasetsViaGraphQL(filter);
-    } catch (error) {
-      console.warn('GraphQL failed, falling back to RPC:', error);
-      return await this.getDatasetsViaRPC(filter);
-    }
+    // Prefer GraphQL for list queries; surface errors to the caller so they can be handled upstream.
+    return this.getDatasetsViaGraphQL(filter);
   }
 
   async getDataset(id: string): Promise<Dataset> {
@@ -54,14 +49,7 @@ export class SuiRepository implements DataRepository {
     filter?: DatasetFilter,
     cursor?: string
   ): Promise<PaginatedResponse<Dataset>> {
-    try {
-      return await this.getDatasetsPaginatedViaGraphQL(filter, cursor);
-    } catch (error) {
-      console.warn('GraphQL pagination failed, falling back to RPC:', error);
-      // Fallback: get all and paginate client-side
-      const allDatasets = await this.getDatasetsViaRPC(filter);
-      return this.paginateClientSide(allDatasets, cursor);
-    }
+    return this.getDatasetsPaginatedViaGraphQL(filter, cursor);
   }
 
   // Private methods for GraphQL queries
@@ -107,27 +95,6 @@ export class SuiRepository implements DataRepository {
       cursor: response.objects.pageInfo.endCursor,
       hasMore: response.objects.pageInfo.hasNextPage,
     };
-  }
-
-  // Private method for RPC fallback
-  private async getDatasetsViaRPC(filter?: DatasetFilter): Promise<Dataset[]> {
-    // Use getOwnedObjects as fallback (less efficient but reliable)
-    const response = await suiClient.getOwnedObjects({
-      filter: { StructType: DATASET_TYPE },
-      options: { showContent: true },
-    });
-
-    const datasets = response.data
-      .filter(obj => obj.data?.content?.dataType === 'moveObject')
-      .map(obj => {
-        const content = obj.data!.content as any;
-        return parseDataset({
-          id: obj.data!.objectId,
-          ...content.fields,
-        });
-      });
-
-    return this.applyFilters(datasets, filter);
   }
 
   // Helper: Apply filters to dataset array
