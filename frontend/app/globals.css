@@ -1,0 +1,229 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sonar-sweep-duration: 4s;
+  --sonar-wave-duration: 2s;
+  --sonar-pulse-duration: 1.5s;
+}
+
+@layer base {
+  body {
+    @apply bg-sonar-abyss text-sonar-highlight-bright font-sans;
+    background: conic-gradient(
+      from 180deg at 50% 50%,
+      #0A172A 0deg,
+      #092E4D 120deg,
+      #0E4B6F 240deg,
+      #0A172A 360deg
+    );
+    position: relative;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.03) 0px,
+        transparent 1px,
+        transparent 2px,
+        rgba(255, 255, 255, 0.03) 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.03) 0px,
+        transparent 1px,
+        transparent 2px,
+        rgba(255, 255, 255, 0.03) 3px
+      );
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Vignette effect */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(
+      circle at center,
+      transparent 0%,
+      rgba(10, 23, 42, 0.4) 70%,
+      rgba(10, 23, 42, 0.8) 100%
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-mono tracking-radar text-sonar-highlight;
+  }
+
+  p {
+    line-height: 1.6;
+  }
+
+  /* Focus visible styles for accessibility */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-sonar-signal ring-offset-2 ring-offset-sonar-abyss;
+  }
+}
+
+@layer components {
+  /* Glass panel effect */
+  .glass-panel {
+    @apply bg-sonar-abyss/80 backdrop-blur-sonar border border-white/10;
+    color: #B8F0FF; /* WCAG AAA compliant */
+  }
+
+  /* Sonar glow effects */
+  .sonar-glow {
+    box-shadow: 0 0 30px rgba(26, 164, 217, 0.35);
+  }
+
+  .sonar-glow-hover {
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+  }
+
+  .sonar-glow-hover:hover {
+    box-shadow: 0 0 60px rgba(26, 164, 217, 0.5);
+    transform: translateY(-2px);
+  }
+
+  /* Button base styles */
+  .sonar-button {
+    @apply px-6 py-3 rounded-sonar font-mono tracking-wide border transition-all duration-300;
+    @apply bg-sonar-signal/20 border-sonar-signal text-sonar-highlight-bright;
+  }
+
+  .sonar-button:hover:not(:disabled) {
+    @apply bg-sonar-signal/30 shadow-sonar;
+  }
+
+  .sonar-button:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* Loading skeleton */
+  .skeleton {
+    @apply animate-pulse bg-gradient-to-r from-sonar-deep/50 to-sonar-blue/50;
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+}
+
+@layer utilities {
+  .animate-sweep {
+    animation: sweep var(--sonar-sweep-duration) linear infinite;
+  }
+
+  .animate-pulse-sonar {
+    animation: pulseSonar var(--sonar-pulse-duration) ease-out;
+  }
+
+  .noise-texture {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.03) 0px,
+        transparent 1px,
+        transparent 2px,
+        rgba(255, 255, 255, 0.03) 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.03) 0px,
+        transparent 1px,
+        transparent 2px,
+        rgba(255, 255, 255, 0.03) 3px
+      );
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulseSonar {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-sweep,
+  .animate-pulse-sonar {
+    animation: none !important;
+  }
+
+  .sonar-scanner-canvas {
+    display: none !important;
+  }
+
+  .sonar-scanner-static {
+    display: block !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sonar-scanner-static {
+    display: none;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(10, 23, 42, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(26, 164, 217, 0.3);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(26, 164, 217, 0.5);
+}
+
+/* Selection color */
+::selection {
+  background: rgba(26, 164, 217, 0.3);
+  color: #B8F0FF;
+}
