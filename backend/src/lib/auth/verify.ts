@@ -3,7 +3,8 @@
  * Uses @mysten/sui.js to verify wallet signatures
  */
 
-import { verifyMessage, isValidSuiAddress } from '@mysten/sui.js/verify';
+import { verifyPersonalMessage } from '@mysten/sui.js/verify';
+import { isValidSuiAddress } from '@mysten/sui.js/utils';
 import { logger } from '../logger';
 
 /**
@@ -23,7 +24,8 @@ export async function verifyWalletSignature(
     }
 
     // Verify the signature
-    const publicKey = await verifyMessage(message, signature);
+    const messageBytes = new TextEncoder().encode(message);
+    const publicKey = await verifyPersonalMessage(messageBytes, signature as any);
 
     // Derive the address from the public key
     const derivedAddress = publicKey.toSuiAddress();
