@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { SignalBadge } from '@/components/ui/SignalBadge';
 import { getTierInfo, calculateBurnAmount, calculateCreatorReward } from '@/lib/tier-utils';
 import { formatSonarAmount } from '@/lib/tier-utils';
+import { usePurchase } from '@/hooks/usePurchase';
 import type { Dataset } from '@/types/blockchain';
 import type { ProtocolStats } from '@/types/blockchain';
 
@@ -17,10 +18,11 @@ interface PurchaseCardProps {
 /**
  * PurchaseCard Component
  * Displays pricing, burn breakdown, and purchase button
- * Shows how the current tier affects the purchase economics
+ * Integrates with Sui wallet for on-chain transactions
  */
 export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
-  const [isPurchasing, setIsPurchasing] = useState(false);
+  const currentAccount = useCurrentAccount();
+  const { purchaseDataset, state, reset } = usePurchase();
 
   const price = Number(dataset.price) / 1_000_000; // Convert from smallest units
   const currentTier = stats ? getTierInfo(stats.circulating_supply) : null;
@@ -30,14 +32,12 @@ export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
   const creatorAmount = stats ? calculateCreatorReward(price, stats.circulating_supply) : price * 0.4;
 
   const handlePurchase = async () => {
-    setIsPurchasing(true);
+    if (!currentAccount) {
+      alert('Please connect your wallet first');
+      return;
+    }
 
-    // Placeholder for purchase transaction
-    // Will integrate with @mysten/dapp-kit for actual wallet transactions
-    setTimeout(() => {
-      setIsPurchasing(false);
-      alert('Purchase flow will be integrated with Sui wallet in the next phase');
-    }, 1500);
+    await purchaseDataset(dataset);
   };
 
   return (
@@ -113,14 +113,65 @@ export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
 
       {/* Purchase Button */}
       {dataset.listed ? (
-        <SonarButton
-          variant="primary"
-          onClick={handlePurchase}
-          disabled={isPurchasing}
-          className="w-full text-lg py-4"
-        >
-          {isPurchasing ? 'Processing...' : 'Purchase Dataset'}
-        </SonarButton>
+        <div className="space-y-3">
+          {/* Transaction Success */}
+          {state.isSuccess && state.digest && (
+            <div className="p-4 bg-sonar-highlight/10 rounded-sonar border border-sonar-highlight/30 mb-3">
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="text-lg">✓</span>
+                <span className="text-sm font-mono text-sonar-highlight">
+                  Purchase Successful!
+                </span>
+              </div>
+              <a
+                href={`https://suiscan.xyz/testnet/tx/${state.digest}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-mono text-sonar-signal hover:text-sonar-highlight-bright underline"
+              >
+                View on Explorer →
+              </a>
+            </div>
+          )}
+
+          {/* Transaction Error */}
+          {state.isError && state.error && (
+            <div className="p-4 bg-sonar-coral/10 rounded-sonar border border-sonar-coral/30 mb-3">
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="text-lg">⚠️</span>
+                <span className="text-sm font-mono text-sonar-coral">
+                  Transaction Failed
+                </span>
+              </div>
+              <p className="text-xs text-sonar-highlight-bright/70">
+                {state.error.message}
+              </p>
+              <SonarButton
+                variant="secondary"
+                onClick={reset}
+                className="w-full text-sm mt-3"
+              >
+                Try Again
+              </SonarButton>
+            </div>
+          )}
+
+          {/* Purchase Button */}
+          {!state.isSuccess && (
+            <SonarButton
+              variant="primary"
+              onClick={handlePurchase}
+              disabled={state.isPurchasing || !currentAccount}
+              className="w-full text-lg py-4"
+            >
+              {state.isPurchasing
+                ? 'Processing Transaction...'
+                : !currentAccount
+                  ? 'Connect Wallet to Purchase'
+                  : 'Purchase Dataset'}
+            </SonarButton>
+          )}
+        </div>
       ) : (
         <div className="text-center py-4">
           <SignalBadge variant="error">Unlisted</SignalBadge>

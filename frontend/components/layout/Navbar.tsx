@@ -2,17 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { ConnectButton, useCurrentAccount } from '@mysten/dapp-kit';
 import { SignalBadge } from '@/components/ui/SignalBadge';
-import { SonarButton } from '@/components/ui/SonarButton';
 import { cn } from '@/lib/utils';
+import { truncateAddress } from '@/lib/utils';
 
 /**
  * Navbar Component
- * Global navigation bar with wallet connection
+ * Global navigation bar with Sui wallet connection
  * Displays tier badge and current network status
  */
 export function Navbar() {
   const pathname = usePathname();
+  const currentAccount = useCurrentAccount();
 
   const navLinks = [
     { href: '/', label: 'Home' },
@@ -73,10 +75,20 @@ export function Navbar() {
               Testnet
             </SignalBadge>
 
-            {/* Wallet Connect Button - Placeholder for now */}
-            <SonarButton variant="primary" className="font-mono text-sm">
-              Connect Wallet
-            </SonarButton>
+            {/* Wallet Connection Info (when connected) */}
+            {currentAccount && (
+              <div className="hidden lg:flex items-center space-x-2 px-3 py-2 bg-sonar-signal/10 rounded-sonar border border-sonar-signal/30">
+                <div className="w-2 h-2 bg-sonar-signal rounded-full animate-pulse" />
+                <span className="text-xs font-mono text-sonar-highlight">
+                  {truncateAddress(currentAccount.address)}
+                </span>
+              </div>
+            )}
+
+            {/* Sui Wallet Connect Button */}
+            <div className="sui-wallet-button">
+              <ConnectButton />
+            </div>
           </div>
         </div>
       </div>

@@ -338,3 +338,21 @@
   background: rgba(26, 164, 217, 0.3);
   color: #B8F0FF;
 }
+
+/* Sui Wallet Button Customization */
+.sui-wallet-button button {
+  @apply font-mono text-sm px-4 py-2 rounded-sonar;
+  @apply bg-sonar-signal text-sonar-abyss font-bold;
+  @apply hover:bg-sonar-highlight-bright transition-all;
+  @apply border border-sonar-signal/50;
+  box-shadow: 0 0 20px rgba(26, 164, 217, 0.3);
+}
+
+.sui-wallet-button button:hover {
+  box-shadow: 0 0 30px rgba(116, 228, 255, 0.5);
+}
+
+/* Wallet modal customization */
+[data-radix-popper-content-wrapper] {
+  z-index: 100 !important;
+}

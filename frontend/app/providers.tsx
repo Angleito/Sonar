@@ -2,12 +2,17 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RepositoryProvider } from '@/providers/repository-provider';
+import { SuiClientProvider, WalletProvider } from '@mysten/dapp-kit';
+import { getFullnodeUrl } from '@mysten/sui.js/client';
 import { useState } from 'react';
+import '@mysten/dapp-kit/dist/index.css';
 
 /**
  * Providers Component
- * Wraps the app with all necessary context providers
+ * Wraps the app with all necessary context providers:
  * - React Query for data fetching and caching
+ * - Sui Client for blockchain connection
+ * - Wallet Provider for Sui wallet integration
  * - Repository for data source abstraction
  */
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -26,11 +31,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
       })
   );
 
+  // Sui network configuration
+  const networks = {
+    testnet: { url: getFullnodeUrl('testnet') },
+    mainnet: { url: getFullnodeUrl('mainnet') },
+    devnet: { url: getFullnodeUrl('devnet') },
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
-      <RepositoryProvider>
-        {children}
-      </RepositoryProvider>
+      <SuiClientProvider networks={networks} defaultNetwork="testnet">
+        <WalletProvider autoConnect>
+          <RepositoryProvider>{children}</RepositoryProvider>
+        </WalletProvider>
+      </SuiClientProvider>
     </QueryClientProvider>
   );
 }
