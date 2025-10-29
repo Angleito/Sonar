@@ -2,7 +2,7 @@
 ///
 /// The core protocol contract managing audio submissions, quality rewards,
 /// dynamic economics, and dataset purchases.
-#[allow(unused_const)]
+#[allow(unused_const, duplicate_alias, lint(self_transfer), lint(public_entry))]
 module sonar::marketplace {
     use std::option::{Self, Option};
     use std::string::{Self, String};
@@ -155,6 +155,7 @@ module sonar::marketplace {
         vesting_duration_epochs: u64
     }
 
+    #[allow(unused_field)]
     public struct DatasetPurchased has copy, drop {
         submission_id: ID,
         buyer: address,
@@ -187,16 +188,19 @@ module sonar::marketplace {
         remaining_vested: u64
     }
 
+    #[allow(unused_field)]
     public struct CircuitBreakerActivated has copy, drop {
         reason: String,
         triggered_at_epoch: u64,
         cooldown_epochs: u64
     }
 
+    #[allow(unused_field)]
     public struct CircuitBreakerDeactivated has copy, drop {
         deactivated_at_epoch: u64
     }
 
+    #[allow(unused_field)]
     public struct LiquidityVaultWithdrawal has copy, drop {
         amount: u64,
         recipient: address,
@@ -758,7 +762,8 @@ module sonar::marketplace {
         let limits = &mut marketplace.withdrawal_limits;
 
         // Check minimum epochs between withdrawals BEFORE resetting
-        // Skip check if this is the very first withdrawal (last_withdrawal_epoch == 0)
+        // Allow first withdrawal unconditionally (last_withdrawal_epoch initialized to 0)
+        // For subsequent withdrawals, enforce 7-epoch cooldown
         if (limits.last_withdrawal_epoch > 0) {
             assert!(
                 current_epoch >= limits.last_withdrawal_epoch + limits.min_epochs_between,
