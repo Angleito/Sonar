@@ -8,7 +8,6 @@ import { randomUUID } from 'crypto';
 interface NonceEntry {
   message: string;
   expiresAt: number;
-  used: boolean;
 }
 
 // In-memory store - in production, use Redis
@@ -35,7 +34,6 @@ export function storeNonce(
   nonceStore.set(nonce, {
     message,
     expiresAt,
-    used: false,
   });
 
   // Auto-cleanup after TTL
@@ -58,11 +56,6 @@ export function getNonceEntry(nonce: string): { message: string; expiresAt: numb
   // Check if expired
   if (Date.now() > entry.expiresAt) {
     nonceStore.delete(nonce);
-    return null;
-  }
-
-  // Check if already used
-  if (entry.used) {
     return null;
   }
 
@@ -89,14 +82,6 @@ export function verifyNonce(nonce: string): boolean {
     nonceStore.delete(nonce);
     return false;
   }
-
-  // Check if already used
-  if (entry.used) {
-    return false;
-  }
-
-  // Mark as used (one-time use)
-  entry.used = true;
 
   return true;
 }

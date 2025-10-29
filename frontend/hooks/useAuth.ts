@@ -6,7 +6,6 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useSignMessage } from '@mysten/dapp-kit';
 import type { AuthVerifyRequest } from '@sonar/shared';
 import {
   requestAuthChallenge,
@@ -32,8 +31,6 @@ export function useAuth(autoLoad = true) {
     isLoading: false,
     error: null,
   });
-
-  const { mutate: signMessage } = useSignMessage();
 
   /**
    * Load stored token from localStorage on mount

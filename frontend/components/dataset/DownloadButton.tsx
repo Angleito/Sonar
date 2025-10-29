@@ -124,9 +124,10 @@ export function DownloadButton({
     return (
       <div className="space-y-2">
         <DownloadProgress
-          current={downloadedBytes}
-          total={totalBytes || estimatedFileSize}
-          filename={`${dataset.id}.mp3`}
+          progress={progress}
+          totalBytes={totalBytes || estimatedFileSize}
+          bytesDownloaded={downloadedBytes}
+          filename={`${dataset.id}-${dataset.title.replace(/\s+/g, '-')}.mp3`}
         />
       </div>
     );

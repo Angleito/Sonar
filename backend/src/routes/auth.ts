@@ -13,7 +13,6 @@ import {
 } from '../lib/auth/nonce';
 import {
   generateToken,
-  verifyToken,
 } from '../lib/auth/jwt';
 import {
   verifyWalletSignature,
@@ -21,8 +20,6 @@ import {
 } from '../lib/auth/verify';
 import {
   createAuthMessage,
-  parseAuthMessage,
-  isMessageExpired,
 } from '@sonar/shared/auth';
 import { ErrorCode } from '@sonar/shared';
 import type { AuthChallenge, AuthVerifyRequest, AuthToken } from '@sonar/shared';
