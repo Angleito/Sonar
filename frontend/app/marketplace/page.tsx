@@ -14,9 +14,7 @@ import type { DatasetFilter } from '@/types/blockchain';
  * Browse and filter audio datasets
  */
 export default function MarketplacePage() {
-  const [filter, setFilter] = useState<DatasetFilter>({
-    listed: true, // Only show listed datasets
-  });
+  const [filter, setFilter] = useState<DatasetFilter>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [minQuality, setMinQuality] = useState<number>(0);
@@ -46,7 +44,7 @@ export default function MarketplacePage() {
     setMinQuality(quality);
     setFilter({
       ...filter,
-      minQuality: quality > 0 ? quality : undefined,
+      min_quality: quality > 0 ? quality : undefined,
     });
   };
 
@@ -165,7 +163,7 @@ export default function MarketplacePage() {
                       setSelectedLanguages([]);
                       setMinQuality(0);
                       setSearchQuery('');
-                      setFilter({ listed: true });
+                      setFilter({});
                     }}
                     className="w-full text-sm"
                   >
