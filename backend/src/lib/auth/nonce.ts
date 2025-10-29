@@ -6,6 +6,7 @@
 import { randomUUID } from 'crypto';
 
 interface NonceEntry {
+  message: string;
   expiresAt: number;
   used: boolean;
 }
@@ -21,13 +22,18 @@ export function generateNonce(): string {
 }
 
 /**
- * Store a nonce with TTL
+ * Store a nonce with its challenge message and TTL
  * Default TTL: 5 minutes
  */
-export function storeNonce(nonce: string, ttlMs: number = 5 * 60 * 1000): void {
+export function storeNonce(
+  nonce: string,
+  message: string,
+  ttlMs: number = 5 * 60 * 1000
+): void {
   const expiresAt = Date.now() + ttlMs;
 
   nonceStore.set(nonce, {
+    message,
     expiresAt,
     used: false,
   });
@@ -64,6 +70,18 @@ export function verifyNonce(nonce: string): boolean {
   entry.used = true;
 
   return true;
+}
+
+/**
+ * Get the challenge message for a nonce
+ * Returns the message if nonce exists, null otherwise
+ */
+export function getChallengeMessage(nonce: string): string | null {
+  const entry = nonceStore.get(nonce);
+  if (!entry) {
+    return null;
+  }
+  return entry.message;
 }
 
 /**

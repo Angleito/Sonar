@@ -38,9 +38,12 @@ Verify a signed message and get JWT token.
 {
   "address": "0x...",
   "signature": "base64...",
-  "nonce": "550e8400-e29b-41d4-a716-446655440000"
+  "nonce": "550e8400-e29b-41d4-a716-446655440000",
+  "message": "Sign this message to authenticate with SONAR:\n\nAddress: 0x...\nNonce: ...\nExpires: 2024-01-01T12:05:00.000Z\n\nThis signature will be used to verify your wallet ownership."
 }
 ```
+
+**Important:** The `message` field must exactly match the message returned from `/auth/challenge`.
 
 **Response:**
 ```json
@@ -227,7 +230,8 @@ curl -X POST http://localhost:3001/auth/verify \
   -d '{
     "address":"0x123abc...",
     "signature":"base64...",
-    "nonce":"550e8400-..."
+    "nonce":"550e8400-...",
+    "message":"Sign this message to authenticate...\n\nAddress: 0x123abc...\nNonce: 550e8400-...\nExpires: ..."
   }'
 ```
 

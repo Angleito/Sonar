@@ -6,6 +6,9 @@ license = "Apache-2.0"
 authors = ["SONAR Protocol <team@sonar.xyz>"]
 
 [dependencies]
+# IMPORTANT: Framework pinned to testnet-v1.43.0 for testnet deployment compatibility
+# MUST use matching Sui CLI v1.43.0 for builds and tests
+# Install with: cargo install --locked --git https://github.com/MystenLabs/sui.git --tag testnet-v1.43.0 sui --force
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.43.0" }
 Walrus = { local = "./dependencies/walrus" }
 WAL = { local = "./dependencies/wal" }

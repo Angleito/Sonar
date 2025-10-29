@@ -9,6 +9,7 @@ import {
   generateNonce,
   storeNonce,
   verifyNonce,
+  getChallengeMessage,
 } from '../lib/auth/nonce';
 import {
   generateToken,
@@ -62,8 +63,8 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
         const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
         const message = createAuthMessage(address, nonce, expiresAt);
 
-        // Store nonce for verification
-        storeNonce(nonce, 5 * 60 * 1000);
+        // Store nonce with message for verification
+        storeNonce(nonce, message, 5 * 60 * 1000);
 
         request.log.info({ address }, 'Challenge requested');
 
@@ -93,15 +94,15 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
     '/auth/verify',
     async (request: FastifyRequest<{ Body: AuthVerifyRequest }>, reply: FastifyReply) => {
       try {
-        const { address, signature, nonce } = request.body;
+        const { address, signature, nonce, message } = request.body;
 
         // Validate request format
-        if (!address || !signature || !nonce) {
+        if (!address || !signature || !nonce || !message) {
           request.log.warn({ address }, 'Missing required fields');
           return reply.code(400).send({
             error: ErrorCode.INVALID_REQUEST,
             code: ErrorCode.INVALID_REQUEST,
-            message: 'Missing address, signature, or nonce',
+            message: 'Missing address, signature, nonce, or message',
           });
         }
 
@@ -125,12 +126,30 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
           });
         }
 
-        // Reconstruct the message from the signature
-        // We need to verify the signature and extract the message
-        // The frontend signed a message, we need to validate it
+        // Get the stored challenge message
+        const storedMessage = getChallengeMessage(nonce);
+        if (!storedMessage) {
+          request.log.warn({ nonce }, 'Challenge message not found');
+          return reply.code(401).send({
+            error: ErrorCode.NONCE_INVALID,
+            code: ErrorCode.NONCE_INVALID,
+            message: 'Challenge not found. Request a new challenge.',
+          });
+        }
+
+        // Validate that the provided message matches the stored message
+        if (message !== storedMessage) {
+          request.log.warn({ address }, 'Message does not match stored challenge');
+          return reply.code(401).send({
+            error: ErrorCode.INVALID_SIGNATURE,
+            code: ErrorCode.INVALID_SIGNATURE,
+            message: 'Message does not match the challenge',
+          });
+        }
+
+        // Verify the signature against the stored message
         try {
-          // Verify the signature
-          const isValid = await verifyWalletSignature(address, '', signature);
+          const isValid = await verifyWalletSignature(address, storedMessage, signature);
 
           if (!isValid) {
             request.log.warn({ address }, 'Invalid signature');

@@ -18,6 +18,7 @@ export interface AuthVerifyRequest {
   address: string;
   signature: string;
   nonce: string;
+  message: string;
 }
 
 /**
