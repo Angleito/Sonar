@@ -220,7 +220,7 @@ export function DatasetCard({ dataset, onPurchase }: DatasetCardProps) {
               Purchase
             </SonarButton>
           ) : (
-            <SignalBadge variant="error">Unlisted</SignalBadge>
+            <SignalBadge variant="danger">Unlisted</SignalBadge>
           )}
         </div>
 

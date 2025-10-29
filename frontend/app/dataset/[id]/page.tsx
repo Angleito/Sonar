@@ -179,7 +179,7 @@ export default function DatasetDetailPage() {
                           Listed
                         </SignalBadge>
                       ) : (
-                        <SignalBadge variant="error" className="text-xs">
+                        <SignalBadge variant="danger" className="text-xs">
                           Unlisted
                         </SignalBadge>
                       )}

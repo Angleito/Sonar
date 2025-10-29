@@ -60,7 +60,7 @@ export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-sonar-highlight-bright/70">Current Tier</span>
             <SignalBadge
-              variant={currentTier.level === 1 ? 'error' : currentTier.level === 2 ? 'warning' : 'success'}
+              variant={currentTier.level === 1 ? 'danger' : currentTier.level === 2 ? 'warning' : 'success'}
               className="text-xs"
             >
               Tier {currentTier.level}
@@ -174,7 +174,7 @@ export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
         </div>
       ) : (
         <div className="text-center py-4">
-          <SignalBadge variant="error">Unlisted</SignalBadge>
+          <SignalBadge variant="danger">Unlisted</SignalBadge>
           <p className="text-xs text-sonar-highlight-bright/50 mt-2">
             This dataset is not currently available for purchase
           </p>
