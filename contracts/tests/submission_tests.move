@@ -2,6 +2,7 @@
 ///
 /// Tests for audio submission, finalization, and vesting mechanics
 #[test_only]
+#[allow(unused_use, unused_variable)]
 module sonar::submission_tests {
     use std::option;
     use std::string;

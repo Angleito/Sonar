@@ -2,6 +2,7 @@
 ///
 /// Tests for tier transitions, full purchase flows, and cross-module interactions
 #[test_only]
+#[allow(unused_use, unused_variable, unused_const)]
 module sonar::integration_tests {
     use std::option;
     use std::string;

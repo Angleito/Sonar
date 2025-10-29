@@ -88,6 +88,26 @@ export function useDatasetSearch(query: string, filter?: DatasetFilter) {
 }
 
 /**
+ * Hook for fetching a single dataset by ID
+ *
+ * Usage:
+ * ```tsx
+ * const { data: dataset, isLoading } = useDataset('dataset-id-123');
+ * ```
+ */
+export function useDataset(datasetId: string) {
+  const repository = useRepository();
+
+  return useQuery<Dataset, Error>({
+    queryKey: ['dataset', datasetId],
+    queryFn: () => repository.getDataset(datasetId),
+    staleTime: 5 * 60_000, // 5 minutes (individual datasets change less frequently)
+    refetchOnWindowFocus: false, // Don't refetch on focus for detail pages
+    retry: 2,
+  });
+}
+
+/**
  * Hook for fetching featured/top datasets
  * Returns datasets sorted by quality score
  *
