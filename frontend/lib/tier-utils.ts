@@ -37,11 +37,14 @@ export interface TierInfo {
 
 /**
  * Determine current tier based on circulating supply
+ * Accepts both number and bigint for flexibility
  */
-export function getCurrentTier(circulatingSupply: number): TierLevel {
-  if (circulatingSupply >= TIER_THRESHOLDS.TIER_1_MIN) {
+export function getCurrentTier(circulatingSupply: number | bigint): TierLevel {
+  const supply = typeof circulatingSupply === 'bigint' ? Number(circulatingSupply) : circulatingSupply;
+
+  if (supply >= TIER_THRESHOLDS.TIER_1_MIN) {
     return 1;
-  } else if (circulatingSupply >= TIER_THRESHOLDS.TIER_2_MIN) {
+  } else if (supply >= TIER_THRESHOLDS.TIER_2_MIN) {
     return 2;
   } else {
     return 3;
@@ -50,8 +53,9 @@ export function getCurrentTier(circulatingSupply: number): TierLevel {
 
 /**
  * Get burn rate for current circulating supply
+ * Accepts both number and bigint for flexibility
  */
-export function getBurnRate(circulatingSupply: number): number {
+export function getBurnRate(circulatingSupply: number | bigint): number {
   const tier = getCurrentTier(circulatingSupply);
 
   switch (tier) {
@@ -67,9 +71,11 @@ export function getBurnRate(circulatingSupply: number): number {
 /**
  * Calculate progress toward next tier (for visual progress bars)
  * Returns 0-100 representing percentage through current tier
+ * Accepts both number and bigint for flexibility
  */
-export function calculateTierProgress(circulatingSupply: number): number {
-  const tier = getCurrentTier(circulatingSupply);
+export function calculateTierProgress(circulatingSupply: number | bigint): number {
+  const supply = typeof circulatingSupply === 'bigint' ? Number(circulatingSupply) : circulatingSupply;
+  const tier = getCurrentTier(supply);
 
   switch (tier) {
     case 1:
@@ -77,26 +83,27 @@ export function calculateTierProgress(circulatingSupply: number): number {
       // Progress represents distance from Tier 1→2 threshold
       // As supply decreases, progress increases toward Tier 2
       const tier1Range = 30_000_000; // Arbitrary range for visualization (70M to 100M)
-      const distanceFromThreshold = circulatingSupply - TIER_THRESHOLDS.TIER_1_MIN;
+      const distanceFromThreshold = supply - TIER_THRESHOLDS.TIER_1_MIN;
       return Math.min(100, Math.max(0, (distanceFromThreshold / tier1Range) * 100));
 
     case 2:
       // Progress from Tier 2 min (50M) toward Tier 1 min (70M)
       const tier2Range = TIER_THRESHOLDS.TIER_1_MIN - TIER_THRESHOLDS.TIER_2_MIN; // 20M range
-      const tier2Progress = circulatingSupply - TIER_THRESHOLDS.TIER_2_MIN;
+      const tier2Progress = supply - TIER_THRESHOLDS.TIER_2_MIN;
       return (tier2Progress / tier2Range) * 100;
 
     case 3:
       // Progress from 0 toward Tier 2 min (50M)
       const tier3Range = TIER_THRESHOLDS.TIER_2_MIN; // 50M range
-      return (circulatingSupply / tier3Range) * 100;
+      return (supply / tier3Range) * 100;
   }
 }
 
 /**
  * Get comprehensive tier information for UI display
+ * Accepts both number and bigint for flexibility
  */
-export function getTierInfo(circulatingSupply: number): TierInfo {
+export function getTierInfo(circulatingSupply: number | bigint): TierInfo {
   const level = getCurrentTier(circulatingSupply);
   const burnRate = getBurnRate(circulatingSupply);
   const progress = calculateTierProgress(circulatingSupply);
@@ -152,25 +159,29 @@ export function formatSonarAmount(amount: number): string {
 
 /**
  * Calculate tokens to burn from a purchase
+ * Accepts both number and bigint for flexibility
  */
 export function calculateBurnAmount(
-  purchasePrice: number,
-  circulatingSupply: number
+  purchasePrice: number | bigint,
+  circulatingSupply: number | bigint
 ): number {
+  const price = typeof purchasePrice === 'bigint' ? Number(purchasePrice) : purchasePrice;
   const burnRate = getBurnRate(circulatingSupply);
-  return purchasePrice * burnRate;
+  return price * burnRate;
 }
 
 /**
  * Calculate creator reward from a purchase
+ * Accepts both number and bigint for flexibility
  */
 export function calculateCreatorReward(
-  purchasePrice: number,
-  circulatingSupply: number
+  purchasePrice: number | bigint,
+  circulatingSupply: number | bigint
 ): number {
+  const price = typeof purchasePrice === 'bigint' ? Number(purchasePrice) : purchasePrice;
   const burnRate = getBurnRate(circulatingSupply);
   const creatorRate = 1 - burnRate;
-  return purchasePrice * creatorRate;
+  return price * creatorRate;
 }
 
 /**
