@@ -9,7 +9,7 @@ import { getCachedPeaks, evictPeakCache } from '@/lib/waveform-utils';
  * Handles SSR-safe dynamic import, peak caching, and proper cleanup
  */
 export function useWaveform(options: UseWaveformOptions): UseWaveformResult {
-  const { src, sliceCount, autoplay = false, preload = false } = options;
+  const { src, sliceCount, autoplay = false, preload = false, fetchOptions } = options;
 
   // Wavesurfer instance state
   const [wavesurfer, setWavesurfer] = useState<any | null>(null);
@@ -54,6 +54,7 @@ export function useWaveform(options: UseWaveformOptions): UseWaveformResult {
         autoplay: autoplay,
         height: 0, // No visual renderer
         barWidth: 0,
+        ...(fetchOptions && { fetchParams: fetchOptions }),
       });
 
       // Extract peaks when ready
@@ -118,7 +119,7 @@ export function useWaveform(options: UseWaveformOptions): UseWaveformResult {
       console.error('Failed to initialize Wavesurfer:', error);
       setIsLoading(false);
     }
-  }, [src, sliceCount, autoplay, isLoading, peaks, wavesurfer]);
+  }, [src, sliceCount, autoplay, fetchOptions, isLoading, peaks, wavesurfer]);
 
   /**
    * Preload on mount if requested

@@ -4,6 +4,8 @@ import { useState, useRef, useMemo } from 'react';
 import { SonarButton } from '@/components/ui/SonarButton';
 import type { Dataset } from '@/types/blockchain';
 import { useWaveform } from '@/hooks/useWaveform';
+import { useAuth } from '@/hooks/useAuth';
+import { getStreamUrl, getPreviewUrl } from '@/lib/api/client';
 
 interface AudioPlayerProps {
   dataset: Dataset;
@@ -17,17 +19,29 @@ interface AudioPlayerProps {
 export function AudioPlayer({ dataset }: AudioPlayerProps) {
   const [volume, setVolume] = useState(1);
   const waveformRef = useRef<HTMLDivElement>(null);
+  const { token, isAuthenticated, isTokenValid } = useAuth();
 
-  // Generate mock full audio URL
-  // In production, this would use dataset.blob_id from Walrus after purchase validation
-  const mockAudioUrl = `/audio/full-${dataset.id}.mp3`;
+  // Use preview URL (public, no auth needed)
+  const previewUrl = getPreviewUrl(dataset.id);
+
+  // Use stream URL (requires JWT) if user is authenticated
+  const streamUrl = isAuthenticated && isTokenValid() ? getStreamUrl(dataset.id, token || '') : null;
+
+  // For authenticated users, pass Authorization header
+  const fetchOptions = streamUrl && token ? ({
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  } as RequestInit) : undefined;
 
   // Initialize waveform hook for full audio playback
+  // Use stream URL if authenticated, otherwise preview
   const waveform = useWaveform({
-    src: mockAudioUrl,
+    src: streamUrl || previewUrl,
     sliceCount: 50, // Match current bar count
     autoplay: false,
     preload: true, // Preload on mount for detail page
+    fetchOptions: fetchOptions,
   });
 
   const formatTime = (seconds: number) => {
@@ -205,12 +219,25 @@ export function AudioPlayer({ dataset }: AudioPlayerProps) {
         Available formats: {dataset.formats.join(', ')} • Sample rate: 44.1kHz • Bit depth: 16-bit
       </div>
 
-      {/* Note about preview */}
-      <div className="p-3 bg-sonar-highlight/5 rounded-sonar border border-sonar-highlight/20">
+      {/* Note about access status */}
+      <div className={`p-3 rounded-sonar border ${
+        streamUrl
+          ? 'bg-sonar-signal/5 border-sonar-signal/20'
+          : 'bg-sonar-highlight/5 border-sonar-highlight/20'
+      }`}>
         <p className="text-xs text-sonar-highlight-bright/70">
-          <span className="font-mono text-sonar-highlight">ⓘ Preview Mode:</span> Full audio
-          access requires dataset purchase. Encrypted audio is stored on Walrus and decrypted
-          with Mysten Seal upon purchase.
+          {streamUrl ? (
+            <>
+              <span className="font-mono text-sonar-signal">✓ Full Access:</span> Playing purchased
+              audio with encrypted decryption via Mysten Seal.
+            </>
+          ) : (
+            <>
+              <span className="font-mono text-sonar-highlight">ⓘ Preview Mode:</span> Full audio
+              access requires dataset purchase. Encrypted audio is stored on Walrus and decrypted
+              with Mysten Seal upon purchase.
+            </>
+          )}
         </p>
       </div>
     </div>

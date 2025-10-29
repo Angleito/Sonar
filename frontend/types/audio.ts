@@ -12,6 +12,7 @@ export interface UseWaveformOptions {
   sliceCount: number;
   autoplay?: boolean;
   preload?: boolean; // If true, call load() on mount
+  fetchOptions?: RequestInit; // Custom fetch options (e.g., Authorization header)
 }
 
 export interface UseWaveformResult {
