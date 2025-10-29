@@ -178,25 +178,35 @@ This ensures:
 
 ## Project Status
 
-This project is currently in the **design and specification phase** for the Walrus Haulout 2025 Hackathon.
+This project implements a **full-stack decentralized audio marketplace** with real-time waveform visualization, wallet authentication, and encrypted streaming.
 
-### Completed
-- ✅ Complete technical specification
-- ✅ Token economics modeling
-- ✅ Smart contract architecture design
-- ✅ Privacy and security framework
+### Completed ✅
+- ✅ Monorepo setup with Bun workspaces
+- ✅ Shared type definitions package (@sonar/shared)
+- ✅ Complete backend API (Fastify + Prisma + PostgreSQL)
+- ✅ Authentication system (challenge-response with nonce, JWT, signature verification)
+- ✅ Wallet integration (@mysten/dapp-kit)
+- ✅ Waveform visualization (Wavesurfer.js v7 with peak extraction)
+- ✅ Audio streaming (Walrus integration with HTTP Range support)
+- ✅ Purchase flow and blockchain event queries
+- ✅ Frontend application (Next.js 14 with TypeScript)
+- ✅ Error handling, logging, and observability
+- ✅ Comprehensive documentation (API, deployment, E2E testing)
+- ✅ Unit tests (22 passing tests for nonce management)
+- ✅ Docker configuration for deployment
+- ✅ Railway deployment setup
 
-### In Progress
-- 🔄 Smart contract implementation
-- 🔄 Backend validator service
-- 🔄 Frontend application
-- 🔄 Walrus and Seal integration
+### In Progress 🔄
+- 🔄 E2E testing (see E2E_TESTING.md for checklist)
+- 🔄 Production deployment and monitoring
 
-### Planned
-- ⏳ Testnet deployment
-- ⏳ Security audit
-- ⏳ AMM liquidity deployment
-- ⏳ Mainnet launch
+### Planned ⏳
+- ⏳ User profiles and purchase history
+- ⏳ Playlist functionality
+- ⏳ Social features (sharing, ratings)
+- ⏳ Creator analytics dashboard
+- ⏳ Redis-backed session management
+- ⏳ Advanced search and filtering
 
 ---
 
@@ -204,13 +214,40 @@ This project is currently in the **design and specification phase** for the Walr
 
 ```
 sonar/
-├── README.md                 # This file
-├── SPECIFICATION.md          # Complete technical specification
-├── contracts/                # Sui Move smart contracts (planned)
-├── backend/                  # Validator service (planned)
-├── frontend/                 # React application (planned)
-├── scripts/                  # Deployment and testing scripts (planned)
-└── docs/                     # Additional documentation (planned)
+├── README.md                          # This file
+├── package.json                       # Root workspace configuration
+├── frontend/                          # Next.js frontend application
+│   ├── app/                          # Pages and layouts
+│   ├── components/                   # React components
+│   ├── hooks/                        # Custom hooks (useAuth, useWaveform)
+│   ├── lib/                          # Utilities (API client, toast)
+│   ├── types/                        # TypeScript definitions
+│   └── public/                       # Static assets
+├── backend/                           # Bun + Fastify backend
+│   ├── src/
+│   │   ├── routes/                  # API endpoints
+│   │   ├── lib/auth/                # Authentication logic
+│   │   ├── lib/sui/                 # Blockchain queries
+│   │   ├── lib/walrus/              # Storage integration
+│   │   ├── middleware/              # HTTP middleware
+│   │   └── index.ts                 # Server entry point
+│   ├── prisma/                      # Database schema
+│   ├── Dockerfile                   # Container image
+│   └── scripts/                     # Setup scripts
+├── packages/
+│   └── shared/                      # Shared types (@sonar/shared)
+│       ├── src/
+│       │   ├── types/               # Type definitions
+│       │   └── auth/                # Auth utilities
+│       └── package.json
+├── contracts/                        # Sui Move smart contracts
+├── scripts/                          # Root utility scripts
+├── docs/                             # Documentation
+│   ├── API.md                       # API reference
+│   ├── DEPLOYMENT.md                # Deployment guide
+│   ├── E2E_TESTING.md               # Testing checklist
+│   └── IMPLEMENTATION_SUMMARY.md    # Architecture overview
+└── .dockerignore                     # Docker build optimization
 ```
 
 ---
@@ -218,30 +255,53 @@ sonar/
 ## Development
 
 ### Prerequisites
-- Sui CLI (v1.0+)
-- Node.js (v18+)
-- Rust (for Move development)
-- Walrus CLI
-- Mysten Seal SDK
+- [Bun](https://bun.sh) (v1.0+)
+- Node.js (v18+) - for npm packages
+- PostgreSQL (v14+) - for database
+- Sui Wallet extension (or similar wallet)
 
-### Setup (Planned)
+### Quick Start
 ```bash
-# Clone repository
-git clone https://github.com/sonar-protocol/sonar.git
-cd sonar
-
 # Install dependencies
-npm install
+bun install
 
-# Build contracts
-cd contracts
-sui move build
+# Setup backend environment
+bun run backend/scripts/setup.ts
 
-# Run tests
-sui move test
+# Create and seed database
+bun prisma migrate deploy
+bun prisma db seed
 
-# Deploy to testnet
-npm run deploy:testnet
+# Terminal 1: Start backend
+cd backend && bun run dev
+
+# Terminal 2: Start frontend
+cd frontend && npm run dev
+
+# Frontend available at http://localhost:3000
+# Backend available at http://localhost:3001
+```
+
+### Running Tests
+```bash
+# Run backend unit tests (nonce management)
+bun test backend/src/lib/auth/__tests__/
+
+# For E2E testing, see docs/E2E_TESTING.md
+```
+
+### Deployment
+```bash
+# Docker build
+docker build -t sonar-backend:latest -f backend/Dockerfile .
+
+# Railway deployment
+railway login
+railway init
+railway add postgres
+railway up
+
+# See docs/DEPLOYMENT.md for detailed instructions
 ```
 
 ---
