@@ -53,6 +53,7 @@ async function start(): Promise<void> {
       properties: {
         NODE_ENV: { type: 'string' },
         PORT: { type: 'string' },
+        DATABASE_URL: { type: 'string' },
         JWT_SECRET: { type: 'string' },
         JWT_EXPIRES_IN: { type: 'string', default: '24h' },
         SUI_RPC_URL: { type: 'string' },

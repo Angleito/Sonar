@@ -16,7 +16,9 @@ interface AudioConfig {
   freesound_search: string;
   license: string;
   author: string;
+  url: string;
   duration_seconds: number;
+  notes?: string;
 }
 
 const CONFIG_PATH = './scripts/audio-config.json';

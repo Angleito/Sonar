@@ -3,7 +3,6 @@
  * Nonces have a 5-minute TTL and are one-time use
  */
 
-import { v4 as uuidv4 } from 'crypto';
 import { randomUUID } from 'crypto';
 
 interface NonceEntry {
