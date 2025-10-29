@@ -119,12 +119,12 @@ async function start(): Promise<void> {
     }
   });
 
-  // TODO: Register routes
-  // - /auth/* (challenge, verify)
-  // - /api/datasets/:id/access
-  // - /api/datasets/:id/stream
-  // - /api/datasets/:id/preview
-  // - /metrics
+  // Register routes
+  const { registerAuthRoutes } = await import('./routes/auth');
+  const { registerDataRoutes } = await import('./routes/data');
+
+  await registerAuthRoutes(fastify);
+  await registerDataRoutes(fastify);
 
   fastify.log.info('Routes registered');
 
