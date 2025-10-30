@@ -80,7 +80,8 @@ module sonar::marketplace {
         id: UID,
         uploader: address,
 
-        // Walrus integration (metadata only, NO blob ID on-chain)
+        // Walrus integration
+        walrus_blob_id: String,              // Walrus blob ID for encrypted audio retrieval
         seal_policy_id: String,              // Mysten Seal policy for decryption
         preview_blob_hash: Option<vector<u8>>,  // Optional: hash for verification
 
@@ -139,10 +140,10 @@ module sonar::marketplace {
         submission_id: ID,
         uploader: address,
         seal_policy_id: String,        // ✅ Safe to emit for decryption requests
+        walrus_blob_id: String,        // ✅ For backend authenticated delivery
         duration_seconds: u64,
         burn_fee_paid: u64,
         submitted_at_epoch: u64
-        // NO walrus_blob_id! (privacy)
     }
 
     public struct SubmissionFinalized has copy, drop {
@@ -333,6 +334,7 @@ module sonar::marketplace {
     public entry fun submit_audio(
         marketplace: &mut QualityMarketplace,
         burn_fee: Coin<SONAR_TOKEN>,
+        walrus_blob_id: String,
         seal_policy_id: String,
         preview_blob_hash: Option<vector<u8>>,
         duration_seconds: u64,
@@ -372,6 +374,7 @@ module sonar::marketplace {
         let submission = AudioSubmission {
             id: submission_id,
             uploader,
+            walrus_blob_id: walrus_blob_id,
             seal_policy_id: seal_policy_id,
             preview_blob_hash,
             duration_seconds,
@@ -392,11 +395,12 @@ module sonar::marketplace {
 
         marketplace.total_submissions = marketplace.total_submissions + 1;
 
-        // Emit event (NO walrus_blob_id!)
+        // Emit event with blob_id for backend access
         event::emit(SubmissionCreated {
             submission_id: submission_id_copy,
             uploader,
             seal_policy_id: submission.seal_policy_id,
+            walrus_blob_id: submission.walrus_blob_id,
             duration_seconds,
             burn_fee_paid: paid_fee,
             submitted_at_epoch: tx_context::epoch(ctx)
@@ -631,6 +635,32 @@ module sonar::marketplace {
             coin::destroy_zero(payment);
         };
 
+        // Unlock vested rewards for uploader upon purchase
+        let current_epoch = tx_context::epoch(ctx);
+        let claimable_vesting = calculate_unlocked_amount(&submission.vested_balance, current_epoch);
+
+        if (claimable_vesting > 0) {
+            // Transfer vested tokens from reward pool to uploader
+            let vesting_coins = coin::take(
+                &mut marketplace.reward_pool,
+                claimable_vesting,
+                ctx
+            );
+
+            // Update claimed amount in vesting record
+            submission.vested_balance.claimed_amount =
+                submission.vested_balance.claimed_amount + claimable_vesting;
+
+            // Release allocated reservation
+            marketplace.reward_pool_allocated = marketplace.reward_pool_allocated - claimable_vesting;
+
+            // Update unlocked balance tracking
+            submission.unlocked_balance = submission.unlocked_balance + claimable_vesting;
+
+            // Transfer to uploader
+            transfer::public_transfer(vesting_coins, submission.uploader);
+        };
+
         // Update statistics
         submission.purchase_count = submission.purchase_count + 1;
         marketplace.total_purchases = marketplace.total_purchases + 1;
@@ -730,9 +760,45 @@ module sonar::marketplace {
 
     // ========== Admin Operations ==========
 
+    /// Update economic configuration with individual parameters
+    /// Externally callable entry point for AdminCap holders
+    public entry fun update_economic_config_entry(
+        _cap: &AdminCap,
+        marketplace: &mut QualityMarketplace,
+        tier_1_floor: u64,
+        tier_2_floor: u64,
+        tier_3_floor: u64,
+        tier_1_burn_bps: u64,
+        tier_2_burn_bps: u64,
+        tier_3_burn_bps: u64,
+        tier_4_burn_bps: u64,
+        tier_1_liquidity_bps: u64,
+        tier_2_liquidity_bps: u64,
+        tier_3_liquidity_bps: u64,
+        tier_4_liquidity_bps: u64,
+        treasury_bps: u64
+    ) {
+        let new_config = economics::create_config(
+            tier_1_floor,
+            tier_2_floor,
+            tier_3_floor,
+            tier_1_burn_bps,
+            tier_2_burn_bps,
+            tier_3_burn_bps,
+            tier_4_burn_bps,
+            tier_1_liquidity_bps,
+            tier_2_liquidity_bps,
+            tier_3_liquidity_bps,
+            tier_4_liquidity_bps,
+            treasury_bps
+        );
+
+        update_economic_config(_cap, marketplace, new_config);
+    }
+
     /// Update economic configuration
     /// CRITICAL: New config must pass validation (all tiers sum to 100%)
-    /// Note: Not entry - call via PTB with constructed EconomicConfig
+    /// Note: Use update_economic_config_entry for direct AdminCap transactions
     public fun update_economic_config(
         _cap: &AdminCap,
         marketplace: &mut QualityMarketplace,

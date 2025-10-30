@@ -57,6 +57,38 @@ module sonar::economics {
         }
     }
 
+    /// Create custom economic configuration with parameters
+    /// Used for updating economic settings via admin transactions
+    public fun create_config(
+        tier_1_floor: u64,
+        tier_2_floor: u64,
+        tier_3_floor: u64,
+        tier_1_burn_bps: u64,
+        tier_2_burn_bps: u64,
+        tier_3_burn_bps: u64,
+        tier_4_burn_bps: u64,
+        tier_1_liquidity_bps: u64,
+        tier_2_liquidity_bps: u64,
+        tier_3_liquidity_bps: u64,
+        tier_4_liquidity_bps: u64,
+        treasury_bps: u64
+    ): EconomicConfig {
+        EconomicConfig {
+            tier_1_floor,
+            tier_2_floor,
+            tier_3_floor,
+            tier_1_burn_bps,
+            tier_2_burn_bps,
+            tier_3_burn_bps,
+            tier_4_burn_bps,
+            tier_1_liquidity_bps,
+            tier_2_liquidity_bps,
+            tier_3_liquidity_bps,
+            tier_4_liquidity_bps,
+            treasury_bps
+        }
+    }
+
     /// Get current economic tier based on circulating supply
     /// Uses ABSOLUTE comparison to avoid overflow
     /// Returns: 1, 2, 3, or 4
