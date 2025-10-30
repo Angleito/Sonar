@@ -6,7 +6,7 @@ export const NETWORK = (process.env.NEXT_PUBLIC_NETWORK || 'testnet') as 'mainne
 
 // Separate RPC and GraphQL endpoints (critical fix!)
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || `https://fullnode.${NETWORK}.sui.io`;
-export const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL || `https://sui-${NETWORK}.mystenlabs.com/graphql`;
+export const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL || `https://sui-${NETWORK}.mystenlabs.net/graphql`;
 
 // Create Sui client for RPC calls
 export const suiClient = new SuiClient({ url: RPC_URL });
