@@ -272,15 +272,43 @@ bun run backend/scripts/setup.ts
 bun prisma migrate deploy
 bun prisma db seed
 
-# Terminal 1: Start backend
+# Terminal 1: Start backend (required for authentication and downloads)
 cd backend && bun run dev
 
 # Terminal 2: Start frontend
-cd frontend && npm run dev
+cd frontend && bun run dev
 
 # Frontend available at http://localhost:3000
 # Backend available at http://localhost:3001
 ```
+
+### Troubleshooting Backend Connection
+
+**Problem:** "Backend server is not available at http://localhost:3001. Make sure the backend is running."
+
+**Solution:** The backend must be running for authentication and download features to work. Follow these steps:
+
+1. **Check if backend is running:**
+   ```bash
+   curl -s http://localhost:3001/health && echo "Backend is running"
+   ```
+
+2. **Start the backend in a separate terminal:**
+   ```bash
+   cd backend && bun run dev
+   ```
+
+3. **Verify backend health:**
+   ```bash
+   curl http://localhost:3001/health
+   # Should return 200 OK
+   ```
+
+4. **Check environment variables:**
+   - Frontend must have `NEXT_PUBLIC_BACKEND_URL=http://localhost:3001` (default)
+   - Backend must have database configured and running
+
+**Note:** The marketplace can be browsed without the backend, but authentication and downloads require backend connectivity.
 
 ### Running Tests
 ```bash
