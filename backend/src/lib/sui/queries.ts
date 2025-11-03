@@ -3,22 +3,12 @@
  * Verifies if a user owns/purchased a dataset
  */
 
-import { SuiClient } from '@mysten/sui.js/client';
 import { logger } from '../logger';
-
-const SUI_RPC_URL = process.env.SUI_RPC_URL!;
-const SONAR_PACKAGE_ID = process.env.SONAR_PACKAGE_ID!;
-
-if (!SUI_RPC_URL) {
-  throw new Error('SUI_RPC_URL environment variable is required');
-}
+import { SONAR_PACKAGE_ID, suiClient } from './client';
 
 if (!SONAR_PACKAGE_ID || SONAR_PACKAGE_ID === '0x0') {
   logger.warn('SONAR_PACKAGE_ID not configured. Purchase verification will use mock data.');
 }
-
-// Create Sui client
-const suiClient = new SuiClient({ url: SUI_RPC_URL });
 
 // In-memory cache for purchase verification (5 min TTL)
 const purchaseCache = new Map<

@@ -89,9 +89,11 @@ export interface DatasetListedEvent {
 }
 
 // Access grant response from backend API
+// Matches @sonar/shared AccessGrant from packages/shared/src/types/walrus.ts
 export interface AccessGrant {
-  seal_policy: string;
+  seal_policy_id: string;
   download_url: string;
+  blob_id: string;
   expires_at: number;
 }
 

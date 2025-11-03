@@ -10,6 +10,7 @@ module sonar::marketplace {
     use sui::coin::{Self, Coin, TreasuryCap};
     use sui::event;
     use sui::object;
+    use sui::sui::SUI;
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
     use sonar::sonar_token::SONAR_TOKEN;
@@ -29,6 +30,11 @@ module sonar::marketplace {
     const E_NOT_APPROVED: u64 = 3002;
     const E_INVALID_PAYMENT: u64 = 3003;
 
+    // Kiosk errors (4000-4999)
+    const E_INSUFFICIENT_KIOSK_RESERVE: u64 = 4001;
+    const E_INVALID_KIOSK_PRICE: u64 = 4002;
+    const E_INVALID_SUI_CUT_PERCENTAGE: u64 = 4003;
+
     // Admin errors (5000-5999)
     const E_UNAUTHORIZED: u64 = 5001;
     const E_CIRCUIT_BREAKER_ACTIVE: u64 = 5002;
@@ -38,6 +44,8 @@ module sonar::marketplace {
 
     // Vesting errors (6000-6999)
     const E_NOTHING_TO_CLAIM: u64 = 6001;
+
+    const SUI_BASE_UNITS: u64 = 1_000_000_000;
 
     // ========== Core Structs ==========
 
@@ -57,6 +65,18 @@ module sonar::marketplace {
         triggered_at_epoch: u64,
         trigger_reason: String,
         cooldown_epochs: u64  // Default 24 epochs (~24 hours)
+    }
+
+    /// Kiosk liquidity reserve for user SONAR/SUI trading and dataset purchases
+    public struct KioskDesk has store {
+        sonar_reserve: Balance<SONAR_TOKEN>,    // SONAR available for sell_sonar
+        sui_reserve: Balance<SUI>,              // SUI collected from marketplace auto-cut
+        base_sonar_price: u64,                  // Base price in SUI per SONAR (tier-dependent)
+        price_override: Option<u64>,            // Admin override: if set, use instead of base_price
+        current_tier: u8,                       // Cached tier (1-4) for pricing
+        sui_cut_percentage: u64,                // % of purchase SUI routed to kiosk (e.g., 5 = 5%)
+        total_sonar_sold: u64,                  // Track cumulative SONAR sold via kiosk
+        total_datasets_purchased: u64           // Track purchases via kiosk
     }
 
     /// Withdrawal limits for liquidity vault
@@ -112,6 +132,9 @@ module sonar::marketplace {
         reward_pool_initial: u64,      // 70M for tracking
         reward_pool_allocated: u64,    // Total rewards reserved for vesting (not yet claimed)
         liquidity_vault: Balance<SONAR_TOKEN>,
+
+        // Kiosk liquidity system
+        kiosk: KioskDesk,
 
         // Statistics
         total_submissions: u64,
@@ -211,6 +234,32 @@ module sonar::marketplace {
         timestamp_epoch: u64
     }
 
+    public struct KioskFunded has copy, drop {
+        amount: u64
+    }
+
+    public struct SonarSold has copy, drop {
+        buyer: address,
+        sui_amount: u64,
+        sonar_amount: u64
+    }
+
+    public struct DatasetPurchasedViaKiosk has copy, drop {
+        buyer: address,
+        dataset_id: ID,
+        sonar_amount: u64
+    }
+
+    public struct KioskPriceUpdated has copy, drop {
+        base_price: u64,
+        override_price: Option<u64>,
+        tier: u8
+    }
+
+    public struct KioskSuiCutUpdated has copy, drop {
+        percentage: u64
+    }
+
     // ========== Initialization ==========
 
     /// Initialize the marketplace
@@ -254,6 +303,16 @@ module sonar::marketplace {
             reward_pool_initial: reward_pool_amount,
             reward_pool_allocated: 0,  // No rewards allocated yet
             liquidity_vault: balance::zero(),
+            kiosk: KioskDesk {
+                sonar_reserve: balance::zero(),
+                sui_reserve: balance::zero(),
+                base_sonar_price: 1_000_000_000,  // 1 SUI per SONAR initially (1e9 base units)
+                price_override: std::option::none(),
+                current_tier: 1,
+                sui_cut_percentage: 5,  // 5% of purchases to kiosk SUI reserve
+                total_sonar_sold: 0,
+                total_datasets_purchased: 0
+            },
             total_submissions: 0,
             total_purchases: 0,
             total_burned: 0,
@@ -324,6 +383,49 @@ module sonar::marketplace {
 
         // Still within cooldown?
         current_epoch < auto_disable_epoch
+    }
+
+    /// Update kiosk tier and base price based on circulating supply
+    /// CRITICAL: Only updates base_price if no admin override is active
+    fun update_kiosk_tier_and_price(marketplace: &mut QualityMarketplace) {
+        let circulating = get_circulating_supply(marketplace);
+        let new_tier = economics::get_tier(circulating, &marketplace.economic_config);
+
+        // Only update base_price if no admin override is set
+        if (option::is_none(&marketplace.kiosk.price_override)) {
+            // Tier-based pricing: Higher tier (lower supply) = higher price to encourage buying
+            // Tier 1 (>50M): 1.0 SUI per SONAR (high supply, standard price)
+            // Tier 2 (35-50M): 0.8 SUI per SONAR (moderate supply, discount)
+            // Tier 3 (20-35M): 0.6 SUI per SONAR (low supply, bigger discount)
+            // Tier 4 (<20M): 0.4 SUI per SONAR (very low supply, maximum discount to encourage buying)
+            if (new_tier == 1) {
+                marketplace.kiosk.base_sonar_price = 1_000_000_000;  // 1 SUI
+            } else if (new_tier == 2) {
+                marketplace.kiosk.base_sonar_price = 800_000_000;    // 0.8 SUI
+            } else if (new_tier == 3) {
+                marketplace.kiosk.base_sonar_price = 600_000_000;    // 0.6 SUI
+            } else if (new_tier == 4) {
+                marketplace.kiosk.base_sonar_price = 400_000_000;    // 0.4 SUI
+            } else {
+                marketplace.kiosk.base_sonar_price = 1_000_000_000;  // Default fallback
+            };
+        };
+
+        marketplace.kiosk.current_tier = new_tier;
+    }
+
+    fun ceil_div_sui_payment(amount: u64, price_per_sonar: u64): u64 {
+        let whole = amount / SUI_BASE_UNITS;
+        let remainder = amount % SUI_BASE_UNITS;
+
+        let mut required = whole * price_per_sonar;
+
+        if (remainder > 0) {
+            let fractional = (remainder * price_per_sonar + (SUI_BASE_UNITS - 1)) / SUI_BASE_UNITS;
+            required = required + fractional;
+        };
+
+        required
     }
 
     // ========== Submission Functions ==========
@@ -583,6 +685,9 @@ module sonar::marketplace {
         let circulating = get_circulating_supply(marketplace);
         let tier = economics::get_tier(circulating, &marketplace.economic_config);
 
+        // Update kiosk tier and pricing
+        update_kiosk_tier_and_price(marketplace);
+
         // Calculate dynamic splits based on current tier
         let (burn_amount, liquidity_amount, uploader_amount, treasury_amount) =
             economics::calculate_purchase_splits(
@@ -607,13 +712,32 @@ module sonar::marketplace {
             marketplace.total_burned = marketplace.total_burned + burn_amount;
         };
 
-        // 2. Liquidity vault portion
+        // 2. Liquidity vault portion (with auto-refill to kiosk)
         if (liquidity_amount > 0) {
-            let liquidity_coin = coin::split(&mut payment, liquidity_amount, ctx);
-            balance::join(
-                &mut marketplace.liquidity_vault,
-                coin::into_balance(liquidity_coin)
-            );
+            let mut liquidity_coin = coin::split(&mut payment, liquidity_amount, ctx);
+
+            // Calculate kiosk auto-refill amount
+            let kiosk_refill = (liquidity_amount * marketplace.kiosk.sui_cut_percentage) / 100;
+            let vault_amount = liquidity_amount - kiosk_refill;
+
+            // Route kiosk portion to sonar_reserve
+            if (kiosk_refill > 0) {
+                let kiosk_coin = coin::split(&mut liquidity_coin, kiosk_refill, ctx);
+                balance::join(
+                    &mut marketplace.kiosk.sonar_reserve,
+                    coin::into_balance(kiosk_coin)
+                );
+            };
+
+            // Route remainder to liquidity vault
+            if (vault_amount > 0) {
+                balance::join(
+                    &mut marketplace.liquidity_vault,
+                    coin::into_balance(liquidity_coin)
+                );
+            } else {
+                coin::destroy_zero(liquidity_coin);
+            };
         };
 
         // 3. Treasury portion
@@ -866,6 +990,451 @@ module sonar::marketplace {
             withdrawn_by: tx_context::sender(ctx),
             timestamp_epoch: current_epoch
         });
+    }
+
+    // ========== Kiosk Functions ==========
+
+    /// Fund kiosk with SONAR tokens (AdminCap required)
+    public entry fun fund_kiosk_sonar(
+        _cap: &AdminCap,
+        marketplace: &mut QualityMarketplace,
+        sonar_coins: Coin<SONAR_TOKEN>
+    ) {
+        let amount = coin::value(&sonar_coins);
+        balance::join(&mut marketplace.kiosk.sonar_reserve, coin::into_balance(sonar_coins));
+
+        event::emit(KioskFunded { amount });
+    }
+
+    /// Get the current active kiosk price (base or override)
+    public fun get_kiosk_price(_marketplace: &QualityMarketplace): u64 {
+        if (option::is_some(&_marketplace.kiosk.price_override)) {
+            *option::borrow(&_marketplace.kiosk.price_override)
+        } else {
+            _marketplace.kiosk.base_sonar_price
+        }
+    }
+
+    /// Sell SONAR: user pays SUI, receives SONAR from kiosk reserve
+    public entry fun sell_sonar(
+        marketplace: &mut QualityMarketplace,
+        mut sui_payment: Coin<SUI>,
+        ctx: &mut TxContext
+    ) {
+        // Update tier and pricing before transaction
+        update_kiosk_tier_and_price(marketplace);
+
+        // Get current price
+        let price = get_kiosk_price(marketplace);
+        assert!(price > 0, E_INVALID_KIOSK_PRICE);
+
+        let sui_amount = coin::value(&sui_payment);
+
+        // Require minimum payment: at least the base price
+        assert!(sui_amount >= price, E_INVALID_PAYMENT);
+
+        // Calculate SONAR received: (sui_amount * 1e9) / price
+        // SUI is 1e9 base units, SONAR is also 1e9 base units
+        let sonar_amount = (sui_amount * 1_000_000_000) / price;
+
+        // Prevent zero SONAR returns (protects users from losing SUI due to rounding)
+        assert!(sonar_amount > 0, E_INVALID_PAYMENT);
+
+        // Check kiosk SONAR reserve
+        let reserve = balance::value(&marketplace.kiosk.sonar_reserve);
+        assert!(reserve >= sonar_amount, E_INSUFFICIENT_KIOSK_RESERVE);
+
+        // Split SUI: keep exact price amount, return change to user
+        let kiosk_sui = coin::split(&mut sui_payment, price, ctx);
+        let kiosk_sui_balance = coin::into_balance(kiosk_sui);
+        balance::join(&mut marketplace.kiosk.sui_reserve, kiosk_sui_balance);
+
+        // Return any overpayment (change) to user
+        if (coin::value(&sui_payment) > 0) {
+            transfer::public_transfer(sui_payment, tx_context::sender(ctx));
+        } else {
+            coin::destroy_zero(sui_payment);
+        };
+
+        // Transfer SONAR from kiosk to user
+        let sonar_coin = coin::take(&mut marketplace.kiosk.sonar_reserve, sonar_amount, ctx);
+        transfer::public_transfer(sonar_coin, tx_context::sender(ctx));
+
+        // Update statistics
+        marketplace.kiosk.total_sonar_sold = marketplace.kiosk.total_sonar_sold + sonar_amount;
+
+        event::emit(SonarSold {
+            buyer: tx_context::sender(ctx),
+            sui_amount,
+            sonar_amount
+        });
+    }
+
+    /// Purchase dataset via kiosk: user pays SONAR from kiosk
+    /// CRITICAL: Triggers backend purchase event with no wallet signature needed on Purchase side
+    public entry fun purchase_dataset_kiosk(
+        marketplace: &mut QualityMarketplace,
+        submission: &mut AudioSubmission,
+        mut sonar_payment: Coin<SONAR_TOKEN>,
+        ctx: &mut TxContext
+    ) {
+        // Circuit breaker check
+        assert!(
+            !is_circuit_breaker_active(&marketplace.circuit_breaker, ctx),
+            E_CIRCUIT_BREAKER_ACTIVE
+        );
+
+        // Validation: submission must be approved and listed
+        assert!(submission.status == 1, E_NOT_APPROVED);
+        assert!(submission.listed_for_sale, E_NOT_LISTED);
+
+        let price = submission.dataset_price;
+        let paid = coin::value(&sonar_payment);
+        assert!(paid >= price, E_INVALID_PAYMENT);
+
+        // Calculate circulating supply and tier
+        let circulating = get_circulating_supply(marketplace);
+        let tier = economics::get_tier(circulating, &marketplace.economic_config);
+
+        // Update kiosk tier and pricing
+        update_kiosk_tier_and_price(marketplace);
+
+        // Calculate dynamic splits based on current tier
+        let (burn_amount, liquidity_amount, uploader_amount, treasury_amount) =
+            economics::calculate_purchase_splits(
+                price,
+                circulating,
+                &marketplace.economic_config
+            );
+
+        // Get rates for event
+        let burn_rate = economics::burn_bps(circulating, &marketplace.economic_config);
+        let liquidity_rate = economics::liquidity_bps(circulating, &marketplace.economic_config);
+        let uploader_rate = economics::uploader_bps(circulating, &marketplace.economic_config);
+
+        // 1. Burn portion
+        if (burn_amount > 0) {
+            let burn_coin = coin::split(&mut sonar_payment, burn_amount, ctx);
+            let burn_balance = coin::into_balance(burn_coin);
+            balance::decrease_supply(
+                coin::supply_mut(&mut marketplace.treasury_cap),
+                burn_balance
+            );
+            marketplace.total_burned = marketplace.total_burned + burn_amount;
+        };
+
+        // 2. Liquidity vault portion (with auto-refill to kiosk)
+        if (liquidity_amount > 0) {
+            let mut liquidity_coin = coin::split(&mut sonar_payment, liquidity_amount, ctx);
+
+            // Calculate kiosk auto-refill amount
+            let kiosk_refill = (liquidity_amount * marketplace.kiosk.sui_cut_percentage) / 100;
+            let vault_amount = liquidity_amount - kiosk_refill;
+
+            // Route kiosk portion to sonar_reserve
+            if (kiosk_refill > 0) {
+                let kiosk_coin = coin::split(&mut liquidity_coin, kiosk_refill, ctx);
+                balance::join(
+                    &mut marketplace.kiosk.sonar_reserve,
+                    coin::into_balance(kiosk_coin)
+                );
+            };
+
+            // Route remainder to liquidity vault
+            if (vault_amount > 0) {
+                balance::join(
+                    &mut marketplace.liquidity_vault,
+                    coin::into_balance(liquidity_coin)
+                );
+            } else {
+                coin::destroy_zero(liquidity_coin);
+            };
+        };
+
+        // 3. Treasury portion
+        if (treasury_amount > 0) {
+            let treasury_coin = coin::split(&mut sonar_payment, treasury_amount, ctx);
+            transfer::public_transfer(treasury_coin, marketplace.treasury_address);
+        };
+
+        // 4. Uploader portion (remaining balance)
+        if (uploader_amount > 0) {
+            let uploader_coin = coin::split(&mut sonar_payment, uploader_amount, ctx);
+            transfer::public_transfer(uploader_coin, submission.uploader);
+        };
+
+        // Return any excess payment to buyer
+        if (coin::value(&sonar_payment) > 0) {
+            transfer::public_transfer(sonar_payment, tx_context::sender(ctx));
+        } else {
+            coin::destroy_zero(sonar_payment);
+        };
+
+        // Unlock vested rewards for uploader upon purchase
+        let current_epoch = tx_context::epoch(ctx);
+        let claimable_vesting = calculate_unlocked_amount(&submission.vested_balance, current_epoch);
+
+        if (claimable_vesting > 0) {
+            let vesting_coins = coin::take(
+                &mut marketplace.reward_pool,
+                claimable_vesting,
+                ctx
+            );
+
+            submission.vested_balance.claimed_amount =
+                submission.vested_balance.claimed_amount + claimable_vesting;
+
+            marketplace.reward_pool_allocated = marketplace.reward_pool_allocated - claimable_vesting;
+            submission.unlocked_balance = submission.unlocked_balance + claimable_vesting;
+
+            transfer::public_transfer(vesting_coins, submission.uploader);
+        };
+
+        // Update statistics
+        submission.purchase_count = submission.purchase_count + 1;
+        marketplace.total_purchases = marketplace.total_purchases + 1;
+        marketplace.kiosk.total_datasets_purchased = marketplace.kiosk.total_datasets_purchased + 1;
+
+        // Emit purchase event for backend event listener
+        event::emit(DatasetPurchasedViaKiosk {
+            buyer: tx_context::sender(ctx),
+            dataset_id: object::uid_to_inner(&submission.id),
+            sonar_amount: price
+        });
+
+        // Emit regular purchase event for analytics
+        event::emit(DatasetPurchased {
+            submission_id: object::uid_to_inner(&submission.id),
+            buyer: tx_context::sender(ctx),
+            price,
+            burned: burn_amount,
+            burn_rate_bps: burn_rate,
+            liquidity_allocated: liquidity_amount,
+            liquidity_rate_bps: liquidity_rate,
+            uploader_paid: uploader_amount,
+            uploader_rate_bps: uploader_rate,
+            treasury_paid: treasury_amount,
+            circulating_supply: circulating,
+            economic_tier: tier,
+            seal_policy_id: submission.seal_policy_id,
+            purchase_timestamp: tx_context::epoch(ctx)
+        });
+    }
+
+    /// Purchase dataset via kiosk using SUI directly.
+    /// Kiosk consumes its SONAR reserve to complete purchase, burning according to tier economics.
+    public entry fun purchase_dataset_kiosk_with_sui(
+        marketplace: &mut QualityMarketplace,
+        submission: &mut AudioSubmission,
+        mut sui_payment: Coin<SUI>,
+        ctx: &mut TxContext
+    ) {
+        assert!(submission.status == 1, E_NOT_APPROVED);
+        assert!(submission.listed_for_sale, E_NOT_LISTED);
+
+        update_kiosk_tier_and_price(marketplace);
+
+        let price_per_sonar = get_kiosk_price(marketplace);
+        assert!(price_per_sonar > 0, E_INVALID_KIOSK_PRICE);
+
+        let dataset_price = submission.dataset_price;
+        let required_sui = ceil_div_sui_payment(dataset_price, price_per_sonar);
+        let provided_sui = coin::value(&sui_payment);
+
+        assert!(provided_sui >= required_sui, E_INVALID_PAYMENT);
+
+        let kiosk_reserve = balance::value(&marketplace.kiosk.sonar_reserve);
+        assert!(kiosk_reserve >= dataset_price, E_INSUFFICIENT_KIOSK_RESERVE);
+
+        // Deposit required SUI into kiosk reserve and refund any change
+        let kiosk_sui_coin = coin::split(&mut sui_payment, required_sui, ctx);
+        balance::join(&mut marketplace.kiosk.sui_reserve, coin::into_balance(kiosk_sui_coin));
+
+        if (coin::value(&sui_payment) > 0) {
+            transfer::public_transfer(sui_payment, tx_context::sender(ctx));
+        } else {
+            coin::destroy_zero(sui_payment);
+        };
+
+        // Withdraw SONAR from kiosk reserve for purchase processing
+        let mut sonar_payment = coin::take(&mut marketplace.kiosk.sonar_reserve, dataset_price, ctx);
+
+        // Calculate circulating supply and tier
+        let circulating = get_circulating_supply(marketplace);
+        let tier = economics::get_tier(circulating, &marketplace.economic_config);
+
+        // Calculate dynamic splits based on current tier
+        let (burn_amount, liquidity_amount, uploader_amount, treasury_amount) =
+            economics::calculate_purchase_splits(
+                dataset_price,
+                circulating,
+                &marketplace.economic_config
+            );
+
+        // Get rates for event
+        let burn_rate = economics::burn_bps(circulating, &marketplace.economic_config);
+        let liquidity_rate = economics::liquidity_bps(circulating, &marketplace.economic_config);
+        let uploader_rate = economics::uploader_bps(circulating, &marketplace.economic_config);
+
+        // 1. Burn portion
+        if (burn_amount > 0) {
+            let burn_coin = coin::split(&mut sonar_payment, burn_amount, ctx);
+            let burn_balance = coin::into_balance(burn_coin);
+            balance::decrease_supply(
+                coin::supply_mut(&mut marketplace.treasury_cap),
+                burn_balance
+            );
+            marketplace.total_burned = marketplace.total_burned + burn_amount;
+        };
+
+        // 2. Liquidity vault portion (with auto-refill to kiosk)
+        if (liquidity_amount > 0) {
+            let mut liquidity_coin = coin::split(&mut sonar_payment, liquidity_amount, ctx);
+
+            let kiosk_refill = (liquidity_amount * marketplace.kiosk.sui_cut_percentage) / 100;
+            let vault_amount = liquidity_amount - kiosk_refill;
+
+            if (kiosk_refill > 0) {
+                let kiosk_coin = coin::split(&mut liquidity_coin, kiosk_refill, ctx);
+                balance::join(
+                    &mut marketplace.kiosk.sonar_reserve,
+                    coin::into_balance(kiosk_coin)
+                );
+            };
+
+            if (vault_amount > 0) {
+                balance::join(
+                    &mut marketplace.liquidity_vault,
+                    coin::into_balance(liquidity_coin)
+                );
+            } else {
+                coin::destroy_zero(liquidity_coin);
+            };
+        };
+
+        // 3. Treasury portion
+        if (treasury_amount > 0) {
+            let treasury_coin = coin::split(&mut sonar_payment, treasury_amount, ctx);
+            transfer::public_transfer(treasury_coin, marketplace.treasury_address);
+        };
+
+        // 4. Uploader portion (remaining balance)
+        if (uploader_amount > 0) {
+            let uploader_coin = coin::split(&mut sonar_payment, uploader_amount, ctx);
+            transfer::public_transfer(uploader_coin, submission.uploader);
+        };
+
+        // Any residual SONAR (from rounding) returns to kiosk reserve
+        if (coin::value(&sonar_payment) > 0) {
+            balance::join(
+                &mut marketplace.kiosk.sonar_reserve,
+                coin::into_balance(sonar_payment)
+            );
+        } else {
+            coin::destroy_zero(sonar_payment);
+        };
+
+        // Unlock vested rewards for uploader upon purchase
+        let current_epoch = tx_context::epoch(ctx);
+        let claimable_vesting = calculate_unlocked_amount(&submission.vested_balance, current_epoch);
+
+        if (claimable_vesting > 0) {
+            let vesting_coins = coin::take(
+                &mut marketplace.reward_pool,
+                claimable_vesting,
+                ctx
+            );
+
+            submission.vested_balance.claimed_amount =
+                submission.vested_balance.claimed_amount + claimable_vesting;
+
+            marketplace.reward_pool_allocated = marketplace.reward_pool_allocated - claimable_vesting;
+            submission.unlocked_balance = submission.unlocked_balance + claimable_vesting;
+
+            transfer::public_transfer(vesting_coins, submission.uploader);
+        };
+
+        submission.purchase_count = submission.purchase_count + 1;
+        marketplace.total_purchases = marketplace.total_purchases + 1;
+        marketplace.kiosk.total_datasets_purchased = marketplace.kiosk.total_datasets_purchased + 1;
+
+        event::emit(DatasetPurchasedViaKiosk {
+            buyer: tx_context::sender(ctx),
+            dataset_id: object::uid_to_inner(&submission.id),
+            sonar_amount: dataset_price
+        });
+
+        event::emit(DatasetPurchased {
+            submission_id: object::uid_to_inner(&submission.id),
+            buyer: tx_context::sender(ctx),
+            price: dataset_price,
+            burned: burn_amount,
+            burn_rate_bps: burn_rate,
+            liquidity_allocated: liquidity_amount,
+            liquidity_rate_bps: liquidity_rate,
+            uploader_paid: uploader_amount,
+            uploader_rate_bps: uploader_rate,
+            treasury_paid: treasury_amount,
+            circulating_supply: circulating,
+            economic_tier: tier,
+            seal_policy_id: submission.seal_policy_id,
+            purchase_timestamp: tx_context::epoch(ctx)
+        });
+    }
+
+    /// Update kiosk price override (AdminCap required)
+    /// None = use tier-based price; Some(value) = use fixed override
+    public entry fun update_kiosk_price_override(
+        _cap: &AdminCap,
+        marketplace: &mut QualityMarketplace,
+        new_price: Option<u64>,
+        _ctx: &mut TxContext
+    ) {
+        // Validate: if Some, price must be > 0
+        if (option::is_some(&new_price)) {
+            assert!(*option::borrow(&new_price) > 0, E_INVALID_KIOSK_PRICE);
+        };
+
+        marketplace.kiosk.price_override = new_price;
+
+        // If clearing override, refresh base_sonar_price from tier
+        // If setting override, this updates tier cache and leaves base_sonar_price unchanged
+        update_kiosk_tier_and_price(marketplace);
+
+        event::emit(KioskPriceUpdated {
+            base_price: marketplace.kiosk.base_sonar_price,
+            override_price: marketplace.kiosk.price_override,
+            tier: marketplace.kiosk.current_tier
+        });
+    }
+
+    /// Update kiosk SUI cut percentage (AdminCap required)
+    /// Percentage is in basis points (e.g., 5 = 5%)
+    /// Valid range: 1-20
+    public entry fun update_kiosk_sui_cut(
+        _cap: &AdminCap,
+        marketplace: &mut QualityMarketplace,
+        percentage: u64
+    ) {
+        assert!(percentage >= 1 && percentage <= 20, E_INVALID_SUI_CUT_PERCENTAGE);
+
+        marketplace.kiosk.sui_cut_percentage = percentage;
+
+        event::emit(KioskSuiCutUpdated { percentage });
+    }
+
+    /// Withdraw SUI from kiosk reserve (AdminCap required)
+    public entry fun withdraw_kiosk_sui(
+        _cap: &AdminCap,
+        marketplace: &mut QualityMarketplace,
+        amount: u64,
+        ctx: &mut TxContext
+    ) {
+        let reserve = balance::value(&marketplace.kiosk.sui_reserve);
+        assert!(reserve >= amount, E_INSUFFICIENT_KIOSK_RESERVE);
+
+        let sui_coins = coin::take(&mut marketplace.kiosk.sui_reserve, amount, ctx);
+        transfer::public_transfer(sui_coins, tx_context::sender(ctx));
     }
 
     // ========== View Functions ==========

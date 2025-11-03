@@ -1,28 +1,33 @@
 'use client';
 
+import { useState } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { SignalBadge } from '@/components/ui/SignalBadge';
+import { KioskPriceCard, KioskPriceBadge } from '@/components/ui/KioskPriceCard';
 import { getTierInfo, calculateBurnAmount, calculateCreatorReward } from '@/lib/tier-utils';
 import { formatSonarAmount } from '@/lib/tier-utils';
 import { usePurchase } from '@/hooks/usePurchase';
+import { KioskPurchaseFlow } from './KioskPurchaseFlow';
 import type { Dataset } from '@/types/blockchain';
 import type { ProtocolStats } from '@/types/blockchain';
 
 interface PurchaseCardProps {
   dataset: Dataset;
   stats?: ProtocolStats;
+  enableKiosk?: boolean;
 }
 
 /**
  * PurchaseCard Component
  * Displays pricing, burn breakdown, and purchase button
- * Integrates with Sui wallet for on-chain transactions
+ * Supports both marketplace and kiosk liquidity flows
  */
-export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
+export function PurchaseCard({ dataset, stats, enableKiosk = true }: PurchaseCardProps) {
   const currentAccount = useCurrentAccount();
   const { purchaseDataset, state, reset } = usePurchase();
+  const [useKioskFlow, setUseKioskFlow] = useState(true);
 
   const price = Number(dataset.price) / 1_000_000; // Convert from smallest units
   const currentTier = stats ? getTierInfo(stats.circulating_supply) : null;
@@ -40,17 +45,63 @@ export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
     await purchaseDataset(dataset);
   };
 
+  // Show kiosk flow by default if enabled
+  if (enableKiosk && useKioskFlow && dataset.listed) {
+    return (
+      <GlassCard className="sonar-glow">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-mono text-sonar-highlight">Purchase Dataset</h3>
+          <button
+            onClick={() => setUseKioskFlow(false)}
+            className="text-xs text-gray-400 hover:text-gray-200 underline"
+          >
+            Use marketplace
+          </button>
+        </div>
+
+        {/* Kiosk Flow */}
+        <KioskPriceCard compact={true} className="mb-6" />
+        <KioskPurchaseFlow
+          dataset={dataset}
+          onSuccess={() => {
+            // Could show success message here
+          }}
+          onCancel={() => setUseKioskFlow(false)}
+        />
+
+        {/* Info */}
+        <div className="mt-6 p-3 bg-blue-500/5 rounded-sonar border border-blue-500/20">
+          <p className="text-xs text-gray-400">
+            <span className="text-blue-300">💧 Kiosk Liquidity:</span> Fixed price with one or two-step purchase
+          </p>
+        </div>
+      </GlassCard>
+    );
+  }
+
   return (
     <GlassCard className="sonar-glow">
-      <h3 className="text-xl font-mono text-sonar-highlight mb-6">Purchase Dataset</h3>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-xl font-mono text-sonar-highlight">Purchase Dataset</h3>
+        {enableKiosk && (
+          <button
+            onClick={() => setUseKioskFlow(true)}
+            className="text-xs text-purple-400 hover:text-purple-300 underline"
+            title="Try kiosk liquidity with fixed pricing"
+          >
+            Try kiosk
+          </button>
+        )}
+      </div>
 
       {/* Price Display */}
       <div className="text-center py-6 mb-6 bg-sonar-abyss/30 rounded-sonar border border-sonar-signal/20">
         <div className="text-5xl font-mono font-bold text-sonar-signal mb-2">
           {price.toFixed(2)}
         </div>
-        <div className="text-sm text-sonar-highlight-bright/60 uppercase tracking-wide">
+        <div className="text-sm text-sonar-highlight-bright/60 uppercase tracking-wide flex items-center justify-center gap-2">
           SONAR
+          {enableKiosk && <KioskPriceBadge />}
         </div>
       </div>
 

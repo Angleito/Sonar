@@ -16,12 +16,15 @@
     "lint": "bun run --filter '*' lint",
     "type-check": "bun run --filter '*' type-check",
     "test": "bun run --filter '*' test",
+    "bootstrap": "bun scripts/bootstrap.ts",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "download-audio": "bun scripts/download-audio-samples.ts"
   },
   "devDependencies": {
     "eslint": "^9.38.0",
+    "globals": "^15.8.0",
     "next": "^16.0.1",
-    "prettier": "^3.1.1"
+    "prettier": "^3.1.1",
+    "typescript-eslint": "^8.13.0"
   }
 }

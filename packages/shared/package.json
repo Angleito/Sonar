@@ -10,7 +10,9 @@
     "./auth": "./src/auth/index.ts"
   },
   "scripts": {
-    "type-check": "tsc --noEmit"
+    "lint": "eslint \"src/**/*.ts\"",
+    "type-check": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@mysten/sui.js": "^0.54.1"

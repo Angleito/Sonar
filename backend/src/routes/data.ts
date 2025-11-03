@@ -6,12 +6,14 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { prisma } from '../lib/db';
 import { authMiddleware } from '../middleware/auth';
-import { streamBlobFromWalrus } from '../lib/walrus/client';
-import { verifyUserOwnsDataset } from '../lib/sui/queries';
-import { ErrorCode } from '@sonar/shared';
-import type { AccessGrant } from '@sonar/shared';
+import { assertDatasetId, parseRangeHeader } from '../lib/validators';
+import {
+  createDatasetAccessGrant,
+  getDatasetAudioStream,
+  getDatasetPreviewStream,
+} from '../services/dataset-service';
+import { isHttpError, toErrorResponse } from '../lib/errors';
 
 /**
  * Register data access routes
@@ -37,91 +39,29 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
-        const { id: datasetId } = request.params;
+        const datasetId = assertDatasetId(request.params.id);
         const userAddress = request.user!.address;
 
-        // Verify ownership
-        const owns = await verifyUserOwnsDataset(
-          userAddress,
+        const grant = await createDatasetAccessGrant({
           datasetId,
-          async (address, id) => {
-            const purchase = await prisma.purchase.findFirst({
-              where: {
-                user_address: address,
-                dataset_id: id,
-              },
-            });
-            return !!purchase;
-          }
-        );
-
-        if (!owns) {
-          request.log.warn(
-            { userAddress, datasetId },
-            'Access denied: user does not own dataset'
-          );
-
-          // Log access denial
-          await prisma.accessLog.create({
-            data: {
-              user_address: userAddress,
-              dataset_id: datasetId,
-              action: 'ACCESS_DENIED',
-              ip_address: request.ip,
-              user_agent: request.headers['user-agent'],
-            },
-          });
-
-          return reply.code(403).send({
-            error: ErrorCode.PURCHASE_REQUIRED,
-            code: ErrorCode.PURCHASE_REQUIRED,
-            message: 'This dataset requires a purchase to access',
-          });
-        }
-
-        // Look up blob_id
-        const blobMapping = await prisma.datasetBlob.findUnique({
-          where: { dataset_id: datasetId },
-        });
-
-        if (!blobMapping) {
-          request.log.error({ datasetId }, 'Blob mapping not found');
-          return reply.code(404).send({
-            error: ErrorCode.BLOB_NOT_FOUND,
-            code: ErrorCode.BLOB_NOT_FOUND,
-            message: 'Audio file not found',
-          });
-        }
-
-        // Log access
-        await prisma.accessLog.create({
-          data: {
-            user_address: userAddress,
-            dataset_id: datasetId,
-            action: 'ACCESS_GRANTED',
-            ip_address: request.ip,
-            user_agent: request.headers['user-agent'],
+          userAddress,
+          metadata: {
+            ip: request.ip,
+            userAgent: Array.isArray(request.headers['user-agent'])
+              ? request.headers['user-agent'][0]
+              : request.headers['user-agent'],
+            logger: request.log,
           },
         });
 
-        request.log.info({ userAddress, datasetId }, 'Access granted');
-
-        // Return access grant
-        const grant: AccessGrant = {
-          seal_policy_id: 'policy-id-placeholder', // TODO: Get from contract
-          download_url: `/api/datasets/${datasetId}/stream`,
-          blob_id: blobMapping.full_blob_id,
-          expires_at: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-        };
-
         return reply.send(grant);
       } catch (error) {
-        request.log.error(error, 'Access request failed');
-        return reply.code(500).send({
-          error: ErrorCode.INTERNAL_ERROR,
-          code: ErrorCode.INTERNAL_ERROR,
-          message: 'Failed to process access request',
-        });
+        if (!isHttpError(error)) {
+          request.log.error({ error, datasetId: request.params.id }, 'Access request failed');
+        }
+
+        const { statusCode, body } = toErrorResponse(error);
+        return reply.code(statusCode).send(body);
       }
     }
   );
@@ -145,55 +85,37 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
-        const { id: datasetId } = request.params;
-
-        // Look up blob_id
-        const blobMapping = await prisma.datasetBlob.findUnique({
-          where: { dataset_id: datasetId },
+        const datasetId = assertDatasetId(request.params.id);
+        const walrusResponse = await getDatasetPreviewStream({
+          datasetId,
+          logger: request.log,
         });
 
-        if (!blobMapping) {
-          request.log.warn({ datasetId }, 'Blob mapping not found');
-          return reply.code(404).send({
-            error: ErrorCode.BLOB_NOT_FOUND,
-            code: ErrorCode.BLOB_NOT_FOUND,
-            message: 'Preview not found',
-          });
-        }
-
-        // Stream from Walrus
-        const walrusResponse = await streamBlobFromWalrus(blobMapping.preview_blob_id);
-
-        // Copy headers and stream
         for (const [key, value] of walrusResponse.headers.entries()) {
-          if (
-            !['content-encoding', 'transfer-encoding'].includes(key.toLowerCase())
-          ) {
+          if (!['content-encoding', 'transfer-encoding'].includes(key.toLowerCase())) {
             reply.header(key, value);
           }
         }
 
         reply.header('Content-Type', 'audio/mpeg');
-        reply.header('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
-
-        request.log.info({ datasetId }, 'Preview stream started');
+        reply.header('Cache-Control', 'public, max-age=86400');
 
         if (!walrusResponse.body) {
-          return reply.code(500).send({
-            error: ErrorCode.WALRUS_ERROR,
-            code: ErrorCode.WALRUS_ERROR,
-            message: 'Failed to stream from storage',
-          });
+          throw new Error('Walrus response missing body');
         }
 
-        return reply.type('audio/mpeg').send(walrusResponse.body);
+        request.log.info({ datasetId }, 'Preview stream started');
+        return reply
+          .status(walrusResponse.status)
+          .type('audio/mpeg')
+          .send(walrusResponse.body);
       } catch (error) {
-        request.log.error(error, 'Preview stream failed');
-        return reply.code(500).send({
-          error: ErrorCode.WALRUS_ERROR,
-          code: ErrorCode.WALRUS_ERROR,
-          message: 'Failed to stream preview',
-        });
+        if (!isHttpError(error)) {
+          request.log.error({ error, datasetId: request.params.id }, 'Preview stream failed');
+        }
+
+        const { statusCode, body } = toErrorResponse(error);
+        return reply.code(statusCode).send(body);
       }
     }
   );
@@ -218,72 +140,28 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       try {
-        const { id: datasetId } = request.params;
+        const datasetId = assertDatasetId(request.params.id);
         const userAddress = request.user!.address;
+        const rangeHeader = Array.isArray(request.headers.range)
+          ? request.headers.range[0]
+          : request.headers.range;
+        const range = parseRangeHeader(rangeHeader);
 
-        // Verify ownership
-        const owns = await verifyUserOwnsDataset(
-          userAddress,
+        const walrusResponse = await getDatasetAudioStream({
           datasetId,
-          async (address, id) => {
-            const purchase = await prisma.purchase.findFirst({
-              where: {
-                user_address: address,
-                dataset_id: id,
-              },
-            });
-            return !!purchase;
-          }
-        );
-
-        if (!owns) {
-          request.log.warn({ userAddress, datasetId }, 'Streaming access denied');
-          return reply.code(403).send({
-            error: ErrorCode.PURCHASE_REQUIRED,
-            code: ErrorCode.PURCHASE_REQUIRED,
-            message: 'Purchase required to stream this dataset',
-          });
-        }
-
-        // Look up blob_id
-        const blobMapping = await prisma.datasetBlob.findUnique({
-          where: { dataset_id: datasetId },
+          userAddress,
+          range,
+          metadata: {
+            ip: request.ip,
+            userAgent: Array.isArray(request.headers['user-agent'])
+              ? request.headers['user-agent'][0]
+              : request.headers['user-agent'],
+            logger: request.log,
+          },
         });
 
-        if (!blobMapping) {
-          request.log.error({ datasetId }, 'Blob mapping not found');
-          return reply.code(404).send({
-            error: ErrorCode.BLOB_NOT_FOUND,
-            code: ErrorCode.BLOB_NOT_FOUND,
-            message: 'Audio file not found',
-          });
-        }
-
-        // Parse Range header if present
-        const rangeHeader = request.headers.range;
-        let range: { start: number; end?: number } | undefined;
-
-        if (rangeHeader) {
-          const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-          if (match) {
-            range = {
-              start: parseInt(match[1], 10),
-              end: match[2] ? parseInt(match[2], 10) : undefined,
-            };
-          }
-        }
-
-        // Stream from Walrus
-        const walrusResponse = await streamBlobFromWalrus(
-          blobMapping.full_blob_id,
-          { range }
-        );
-
-        // Copy headers
         for (const [key, value] of walrusResponse.headers.entries()) {
-          if (
-            !['content-encoding', 'transfer-encoding'].includes(key.toLowerCase())
-          ) {
+          if (!['content-encoding', 'transfer-encoding'].includes(key.toLowerCase())) {
             reply.header(key, value);
           }
         }
@@ -291,28 +169,8 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
         reply.header('Content-Type', 'audio/mpeg');
         reply.header('Accept-Ranges', 'bytes');
 
-        // Log stream start
-        await prisma.accessLog.create({
-          data: {
-            user_address: userAddress,
-            dataset_id: datasetId,
-            action: 'STREAM_STARTED',
-            ip_address: request.ip,
-            user_agent: request.headers['user-agent'],
-          },
-        });
-
-        request.log.info(
-          { userAddress, datasetId, range },
-          'Full stream started'
-        );
-
         if (!walrusResponse.body) {
-          return reply.code(500).send({
-            error: ErrorCode.WALRUS_ERROR,
-            code: ErrorCode.WALRUS_ERROR,
-            message: 'Failed to stream from storage',
-          });
+          throw new Error('Walrus response missing body');
         }
 
         return reply
@@ -320,12 +178,12 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
           .status(walrusResponse.status)
           .send(walrusResponse.body);
       } catch (error) {
-        request.log.error(error, 'Stream failed');
-        return reply.code(500).send({
-          error: ErrorCode.WALRUS_ERROR,
-          code: ErrorCode.WALRUS_ERROR,
-          message: 'Failed to stream audio',
-        });
+        if (!isHttpError(error)) {
+          request.log.error({ error, datasetId: request.params.id }, 'Stream failed');
+        }
+
+        const { statusCode, body } = toErrorResponse(error);
+        return reply.code(statusCode).send(body);
       }
     }
   );
