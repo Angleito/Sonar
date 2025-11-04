@@ -5,10 +5,11 @@ import { SONAR_MARKETPLACE_ID } from '../lib/sui/client';
 import { HttpError } from '../lib/errors';
 import { ErrorCode, type AccessGrant } from '@sonar/shared';
 import type { RequestMetadata } from './types';
+import { config } from '../lib/config';
 
 const KIOSK_SYNC_TTL_MS = 60 * 1000;
 const SUI_BASE_UNITS = BigInt(1_000_000_000);
-const WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL;
+const WALRUS_AGGREGATOR_URL = config.walrus.aggregatorUrl;
 
 type PrismaKioskClient = Pick<
   PrismaClient,

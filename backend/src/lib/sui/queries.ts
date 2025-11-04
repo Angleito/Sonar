@@ -4,7 +4,7 @@
  */
 
 import { logger } from '../logger';
-import { SONAR_PACKAGE_ID, suiClient, suiQueryExecutor } from './client';
+import { SONAR_PACKAGE_ID, SUI_RPC_URL, suiClient, suiQueryExecutor } from './client';
 
 if (!SONAR_PACKAGE_ID || SONAR_PACKAGE_ID === '0x0') {
   logger.warn('SONAR_PACKAGE_ID not configured. Purchase verification will use mock data.');

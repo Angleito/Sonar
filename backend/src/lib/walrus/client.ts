@@ -13,35 +13,30 @@ import {
   WalrusConnectionManager,
 } from '@dreamlit/walrus';
 import { logger } from '../logger';
+import { config } from '../config';
 
-// Environment configuration
-const WALRUS_AGGREGATOR_URL = process.env.WALRUS_AGGREGATOR_URL!;
-const WALRUS_PUBLISHER_URL = process.env.WALRUS_PUBLISHER_URL || WALRUS_AGGREGATOR_URL;
-const MOCK_WALRUS = process.env.MOCK_WALRUS === 'true';
-
-if (!WALRUS_AGGREGATOR_URL) {
-  throw new Error('WALRUS_AGGREGATOR_URL environment variable is required');
-}
+// Get configuration from centralized config
+const MOCK_WALRUS = config.walrus.mockMode;
 
 // Normalize URLs for consistent endpoint handling
-const aggregatorBase = normalizeBaseUrl(WALRUS_AGGREGATOR_URL);
-const publisherBase = normalizeBaseUrl(WALRUS_PUBLISHER_URL);
+const aggregatorBase = normalizeBaseUrl(config.walrus.aggregatorUrl);
+const publisherBase = normalizeBaseUrl(config.walrus.publisherUrl || config.walrus.aggregatorUrl);
 
 // Production-ready rate limiting configuration
 // Aggregator: Higher limits for read operations (streaming, metadata)
 const aggregatorLimiter = new RateLimiter({
   name: 'walrus-aggregator',
-  maxRPS: Number(process.env.WALRUS_AGG_MAX_RPS ?? 5),
-  burst: Number(process.env.WALRUS_AGG_BURST ?? 5),
-  maxConcurrent: Number(process.env.WALRUS_AGG_MAX_CONCURRENT ?? 3),
+  maxRPS: config.walrus.aggregator.maxRPS,
+  burst: config.walrus.aggregator.burst,
+  maxConcurrent: config.walrus.aggregator.maxConcurrent,
 });
 
 // Publisher: Conservative limits for write operations (upload)
 const publisherLimiter = new RateLimiter({
   name: 'walrus-publisher',
-  maxRPS: Number(process.env.WALRUS_PUB_MAX_RPS ?? 1),
-  burst: Number(process.env.WALRUS_PUB_BURST ?? 2),
-  maxConcurrent: Number(process.env.WALRUS_PUB_MAX_CONCURRENT ?? 1),
+  maxRPS: config.walrus.publisher.maxRPS,
+  burst: config.walrus.publisher.burst,
+  maxConcurrent: config.walrus.publisher.maxConcurrent,
 });
 
 // Dreamlit DirectTransport: Production SDK transport layer with built-in failover
@@ -70,7 +65,7 @@ healthMonitor.check().catch((error: unknown) => {
 });
 
 // Stream timeout configuration
-const STREAM_TIMEOUT_MS = Number(process.env.WALRUS_STREAM_TIMEOUT_MS ?? 30_000);
+const STREAM_TIMEOUT_MS = config.walrus.aggregator.requestTimeout;
 
 /**
  * Fetch blob metadata from Walrus via the SDK transport layer.

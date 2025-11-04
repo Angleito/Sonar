@@ -4,14 +4,46 @@ import { suiClient, graphqlClient, DATASET_TYPE, STATS_OBJECT_ID } from '@/lib/s
 import { GET_DATASETS, GET_DATASET, GET_PROTOCOL_STATS } from '@/lib/sui/queries';
 
 /**
+ * Exponential backoff retry utility
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`, lastError.message);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Sui Blockchain Repository
  * Queries real on-chain data with GraphQL for lists and RPC for critical reads
- * Includes automatic fallback from GraphQL to RPC on failure
+ * Includes automatic fallback from GraphQL to RPC on failure with retry logic
  */
 export class SuiRepository implements DataRepository {
   async getDatasets(filter?: DatasetFilter): Promise<Dataset[]> {
-    // Prefer GraphQL for list queries; surface errors to the caller so they can be handled upstream.
-    return this.getDatasetsViaGraphQL(filter);
+    // Try GraphQL first with retry logic
+    try {
+      return await retryWithBackoff(() => this.getDatasetsViaGraphQL(filter));
+    } catch (graphqlError) {
+      console.warn('GraphQL query failed, attempting RPC fallback', graphqlError);
+      // Fallback to RPC if GraphQL fails
+      return await this.getDatasetsViaRPC(filter);
+    }
   }
 
   async getDataset(id: string): Promise<Dataset> {
@@ -97,6 +129,29 @@ export class SuiRepository implements DataRepository {
     };
   }
 
+  // RPC fallback for list queries
+  private async getDatasetsViaRPC(filter?: DatasetFilter): Promise<Dataset[]> {
+    console.info('Using RPC fallback for dataset list query');
+
+    // Query objects of the dataset type using RPC
+    const response = await suiClient.queryObjects({
+      filter: { StructType: DATASET_TYPE },
+      options: { showContent: true },
+    });
+
+    const datasets = response.data
+      .filter(obj => obj.data?.content && obj.data.content.dataType === 'moveObject')
+      .map(obj => {
+        const content = obj.data!.content as { fields: any };
+        return parseDataset({
+          id: obj.data!.objectId,
+          ...content.fields,
+        });
+      });
+
+    return this.applyFilters(datasets, filter);
+  }
+
   // Helper: Apply filters to dataset array
   private applyFilters(datasets: Dataset[], filter?: DatasetFilter): Dataset[] {
     if (!filter) return datasets;
@@ -132,25 +187,5 @@ export class SuiRepository implements DataRepository {
     }
 
     return filtered;
-  }
-
-  // Helper: Client-side pagination
-  private paginateClientSide(
-    datasets: Dataset[],
-    cursor?: string
-  ): PaginatedResponse<Dataset> {
-    const pageSize = 12;
-    let startIndex = 0;
-
-    if (cursor) {
-      startIndex = parseInt(cursor, 10);
-    }
-
-    const endIndex = startIndex + pageSize;
-    const data = datasets.slice(startIndex, endIndex);
-    const hasMore = endIndex < datasets.length;
-    const nextCursor = hasMore ? endIndex.toString() : undefined;
-
-    return { data, cursor: nextCursor, hasMore };
   }
 }
