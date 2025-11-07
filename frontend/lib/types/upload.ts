@@ -16,6 +16,7 @@ export interface AudioFile {
   duration: number;
   waveform?: number[];
   preview?: string;
+  id?: string; // Unique ID for tracking individual files in multi-file uploads
 }
 
 export interface DatasetMetadata {
@@ -24,6 +25,7 @@ export interface DatasetMetadata {
   languages: string[];
   tags: string[];
   consent: boolean;
+  fastUploadEnabled?: boolean;
 }
 
 export interface EncryptionResult {
@@ -43,11 +45,25 @@ export interface EncryptionResult {
   };
 }
 
+// Per-file upload result for multi-file datasets
+export interface FileUploadResult {
+  fileId: string; // Matches AudioFile.id
+  blobId: string;
+  previewBlobId?: string;
+  seal_policy_id: string;
+  backupKey: Uint8Array;
+  duration: number;
+}
+
+// Legacy single-file upload result (backwards compatible)
 export interface WalrusUploadResult {
   blobId: string;
   previewBlobId?: string;
   seal_policy_id: string; // Seal identity for decryption
   backupKey: Uint8Array; // Backup key (should be stored securely)
+  // Multi-file dataset support
+  files?: FileUploadResult[]; // For multi-file datasets
+  bundleDiscountBps?: number; // Basis points (e.g., 2000 = 20%)
 }
 
 export interface VerificationStage {
@@ -78,7 +94,8 @@ export interface PublishResult {
 
 export interface UploadWizardState {
   step: UploadStep;
-  audioFile: AudioFile | null;
+  audioFile: AudioFile | null; // Kept for backwards compatibility (single file)
+  audioFiles: AudioFile[]; // Multi-file support
   metadata: DatasetMetadata | null;
   encryption: EncryptionResult | null;
   walrusUpload: WalrusUploadResult | null;

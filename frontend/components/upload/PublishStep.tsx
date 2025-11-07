@@ -68,18 +68,44 @@ export function PublishStep({
       // TODO: Calculate actual burn fee based on circulating supply
       const burnFee = 1000000; // 0.001 SONAR (placeholder)
 
-      // Call submit_audio function
-      tx.moveCall({
-        target: `${PACKAGE_ID}::marketplace::submit_audio`,
-        arguments: [
-          tx.object(MARKETPLACE_ID),
-          tx.pure.string(walrusUpload.blobId),
-          tx.pure.string(walrusUpload.seal_policy_id), // Seal policy ID for decryption
-          tx.pure.option('vector<u8>', null), // preview_blob_hash (optional)
-          tx.pure.u64(3600), // duration_seconds (placeholder - should come from audioFile)
-          tx.splitCoins(tx.gas, [burnFee])[0], // burn_fee
-        ],
-      });
+      // Check if multi-file dataset
+      const isMultiFile = walrusUpload.files && walrusUpload.files.length > 0;
+
+      if (isMultiFile) {
+        // Multi-file dataset: Call submit_audio_dataset
+        const files = walrusUpload.files!;
+
+        const blobIds = files.map(f => f.blobId);
+        const previewBlobIds = files.map(f => f.previewBlobId || '');
+        const sealPolicyIds = files.map(f => f.seal_policy_id);
+        const durations = files.map(f => Math.floor(f.duration)); // Convert to u64
+
+        tx.moveCall({
+          target: `${PACKAGE_ID}::marketplace::submit_audio_dataset`,
+          arguments: [
+            tx.object(MARKETPLACE_ID),
+            tx.splitCoins(tx.gas, [burnFee])[0], // burn_fee
+            tx.pure.vector('string', blobIds),
+            tx.pure.vector('string', previewBlobIds),
+            tx.pure.vector('string', sealPolicyIds),
+            tx.pure.vector('u64', durations),
+            tx.pure.u64(walrusUpload.bundleDiscountBps || 0), // bundle_discount_bps
+          ],
+        });
+      } else {
+        // Single file: Call submit_audio (backwards compatibility)
+        tx.moveCall({
+          target: `${PACKAGE_ID}::marketplace::submit_audio`,
+          arguments: [
+            tx.object(MARKETPLACE_ID),
+            tx.pure.string(walrusUpload.blobId),
+            tx.pure.string(walrusUpload.seal_policy_id), // Seal policy ID for decryption
+            tx.pure.option('vector<u8>', null), // preview_blob_hash (optional)
+            tx.pure.u64(3600), // duration_seconds (placeholder - should come from audioFile)
+            tx.splitCoins(tx.gas, [burnFee])[0], // burn_fee
+          ],
+        });
+      }
 
       setPublishState('broadcasting');
 
@@ -195,19 +221,50 @@ export function PublishStep({
                 </span>
               </div>
 
-              <div className="flex justify-between">
-                <span className="text-sonar-highlight/70">Walrus Blob ID:</span>
-                <span className="text-sonar-signal font-mono text-xs truncate max-w-xs">
-                  {walrusUpload.blobId}
-                </span>
-              </div>
+              {walrusUpload.files && walrusUpload.files.length > 0 ? (
+                <>
+                  {/* Multi-file dataset */}
+                  <div className="flex justify-between">
+                    <span className="text-sonar-highlight/70">Files:</span>
+                    <span className="text-sonar-signal font-mono">
+                      {walrusUpload.files.length} audio files
+                    </span>
+                  </div>
 
-              <div className="flex justify-between">
-                <span className="text-sonar-highlight/70">Seal Policy ID:</span>
-                <span className="text-sonar-signal font-mono text-xs truncate max-w-xs">
-                  {walrusUpload.seal_policy_id}
-                </span>
-              </div>
+                  <div className="flex justify-between">
+                    <span className="text-sonar-highlight/70">Total Duration:</span>
+                    <span className="text-sonar-signal font-mono">
+                      {Math.floor(walrusUpload.files.reduce((sum, f) => sum + f.duration, 0) / 60)} minutes
+                    </span>
+                  </div>
+
+                  {walrusUpload.bundleDiscountBps && walrusUpload.bundleDiscountBps > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-sonar-highlight/70">Bundle Discount:</span>
+                      <span className="text-sonar-signal font-mono">
+                        {walrusUpload.bundleDiscountBps / 100}%
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Single file dataset */}
+                  <div className="flex justify-between">
+                    <span className="text-sonar-highlight/70">Walrus Blob ID:</span>
+                    <span className="text-sonar-signal font-mono text-xs truncate max-w-xs">
+                      {walrusUpload.blobId}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-sonar-highlight/70">Seal Policy ID:</span>
+                    <span className="text-sonar-signal font-mono text-xs truncate max-w-xs">
+                      {walrusUpload.seal_policy_id}
+                    </span>
+                  </div>
+                </>
+              )}
 
               {verification.qualityScore && (
                 <div className="flex justify-between">

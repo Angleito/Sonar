@@ -26,6 +26,7 @@ module sonar::marketplace {
     const E_ALREADY_FINALIZED: u64 = 2003;
     const E_INVALID_QUALITY_SCORE: u64 = 2004;
     const E_INSUFFICIENT_REWARDS: u64 = 2005;
+    const E_INVALID_PARAMETER: u64 = 2006;
 
     // Purchase errors (3000-3999)
     const E_NOT_LISTED: u64 = 3001;
@@ -140,6 +141,41 @@ module sonar::marketplace {
         submitted_at_epoch: u64
     }
 
+    /// Audio file entry within a dataset
+    public struct AudioFileEntry has store, copy, drop {
+        blob_id: String,
+        preview_blob_id: String,
+        seal_policy_id: String,
+        duration: u64
+    }
+
+    /// Dataset submission containing multiple audio files
+    public struct DatasetSubmission has key, store {
+        id: UID,
+        uploader: address,
+
+        // Multiple audio files
+        files: vector<AudioFileEntry>,
+        total_duration: u64,
+        file_count: u64,
+
+        // Economics
+        bundle_discount_bps: u64,      // Basis points (2000 = 20% discount)
+        quality_score: u8,              // Average quality across all files
+        status: u8,                     // 0=pending, 1=approved, 2=rejected
+
+        // Vesting and earnings (for entire dataset)
+        vested_balance: VestedBalance,
+        unlocked_balance: u64,
+
+        // Marketplace
+        dataset_price: u64,             // Price for bundle
+        listed_for_sale: bool,
+        purchase_count: u64,
+
+        submitted_at_epoch: u64
+    }
+
     /// Main marketplace contract
     public struct QualityMarketplace has key {
         id: UID,
@@ -195,6 +231,16 @@ module sonar::marketplace {
         reward_amount: u64,
         vesting_start_epoch: u64,
         vesting_duration_epochs: u64
+    }
+
+    public struct DatasetSubmissionCreated has copy, drop {
+        submission_id: ID,
+        uploader: address,
+        file_count: u64,
+        total_duration: u64,
+        bundle_discount_bps: u64,
+        burn_fee_paid: u64,
+        submitted_at_epoch: u64
     }
 
     #[allow(unused_field)]
@@ -554,6 +600,114 @@ module sonar::marketplace {
 
         // Transfer submission to uploader
         transfer::transfer(submission, uploader);
+    }
+
+    /// Submit multiple audio files as a dataset
+    /// Creates a DatasetSubmission containing multiple audio files
+    public entry fun submit_audio_dataset(
+        marketplace: &mut QualityMarketplace,
+        burn_fee: Coin<SONAR_TOKEN>,
+        blob_ids: vector<String>,
+        preview_blob_ids: vector<String>,
+        seal_policy_ids: vector<String>,
+        durations: vector<u64>,
+        bundle_discount_bps: u64,      // Basis points: 2000 = 20% discount
+        ctx: &mut TxContext
+    ) {
+        // Circuit breaker check
+        assert!(
+            !is_circuit_breaker_active(&marketplace.circuit_breaker, ctx),
+            E_CIRCUIT_BREAKER_ACTIVE
+        );
+
+        // Validate inputs
+        let file_count = vector::length(&blob_ids);
+        assert!(file_count > 0, E_INVALID_PARAMETER);
+        assert!(file_count <= 100, E_INVALID_PARAMETER); // Max 100 files per dataset
+        assert!(vector::length(&preview_blob_ids) == file_count, E_INVALID_PARAMETER);
+        assert!(vector::length(&seal_policy_ids) == file_count, E_INVALID_PARAMETER);
+        assert!(vector::length(&durations) == file_count, E_INVALID_PARAMETER);
+        assert!(bundle_discount_bps <= 5000, E_INVALID_PARAMETER); // Max 50% discount
+
+        // Calculate required burn fee based on circulating supply
+        let circulating = get_circulating_supply(marketplace);
+        let required_fee = economics::calculate_burn_fee(circulating);
+        let paid_fee = coin::value(&burn_fee);
+
+        assert!(paid_fee >= required_fee, E_INVALID_BURN_FEE);
+
+        // Burn the submission fee
+        let burn_balance = coin::into_balance(burn_fee);
+        balance::decrease_supply(
+            coin::supply_mut(&mut marketplace.treasury_cap),
+            burn_balance
+        );
+        marketplace.total_burned = marketplace.total_burned + paid_fee;
+
+        // Check reward pool can cover minimum reward (30+ quality score)
+        let min_reward = economics::calculate_reward(circulating, 30);
+        let pool_balance = balance::value(&marketplace.reward_pool);
+        assert!(pool_balance >= min_reward, E_REWARD_POOL_DEPLETED);
+
+        // Build vector of AudioFileEntry structs
+        let mut files = vector::empty<AudioFileEntry>();
+        let mut total_duration: u64 = 0;
+        let mut i: u64 = 0;
+
+        while (i < file_count) {
+            let file_entry = AudioFileEntry {
+                blob_id: *vector::borrow(&blob_ids, i),
+                preview_blob_id: *vector::borrow(&preview_blob_ids, i),
+                seal_policy_id: *vector::borrow(&seal_policy_ids, i),
+                duration: *vector::borrow(&durations, i)
+            };
+            total_duration = total_duration + *vector::borrow(&durations, i);
+            vector::push_back(&mut files, file_entry);
+            i = i + 1;
+        };
+
+        // Create dataset submission object
+        let submission_id = object::new(ctx);
+        let submission_id_copy = object::uid_to_inner(&submission_id);
+        let uploader = tx_context::sender(ctx);
+
+        let dataset = DatasetSubmission {
+            id: submission_id,
+            uploader,
+            files,
+            total_duration,
+            file_count,
+            bundle_discount_bps,
+            quality_score: 0,       // Set by validator
+            status: 0,              // 0 = pending
+            vested_balance: VestedBalance {
+                total_amount: 0,
+                unlock_start_epoch: 0,
+                unlock_duration_epochs: 90,
+                claimed_amount: 0
+            },
+            unlocked_balance: 0,
+            dataset_price: 0,
+            listed_for_sale: false,
+            purchase_count: 0,
+            submitted_at_epoch: tx_context::epoch(ctx)
+        };
+
+        marketplace.total_submissions = marketplace.total_submissions + 1;
+
+        // Emit event for backend
+        event::emit(DatasetSubmissionCreated {
+            submission_id: submission_id_copy,
+            uploader,
+            file_count,
+            total_duration,
+            bundle_discount_bps,
+            burn_fee_paid: paid_fee,
+            submitted_at_epoch: tx_context::epoch(ctx)
+        });
+
+        // Transfer dataset to uploader
+        transfer::transfer(dataset, uploader);
     }
 
     /// Finalize submission with quality score (ValidatorCap required)

@@ -11,25 +11,30 @@ datasource db {
 }
 
 model Dataset {
-  id                String   @id
-  creator           String
-  quality_score     Int
-  price             BigInt
-  listed            Boolean  @default(true)
-  duration_seconds  Int
-  languages         String[]
-  formats           String[]
-  media_type        String
-  created_at        DateTime @default(now())
-  title             String
-  description       String
-  total_purchases   Int      @default(0)
-  seal_policy_id    String?
+  id                      String   @id
+  creator                 String
+  quality_score           Int
+  price                   BigInt
+  listed                  Boolean  @default(true)
+  duration_seconds        Int      // Deprecated: use total_duration for multi-file
+  languages               String[]
+  formats                 String[]
+  media_type              String
+  created_at              DateTime @default(now())
+  title                   String
+  description             String
+  total_purchases         Int      @default(0)
+  seal_policy_id          String?
+
+  // Multi-file dataset support
+  file_count              Int      @default(1)
+  total_duration          Int?     // Sum of all file durations
+  bundle_discount_bps     Int?     // Basis points (2000 = 20% discount)
 
   // Relations
-  blobs             DatasetBlob?
-  purchases         Purchase[]
-  access_logs       AccessLog[]
+  blobs                   DatasetBlob[]  // Changed from 1:1 to 1:many
+  purchases               Purchase[]
+  access_logs             AccessLog[]
 
   @@index([creator])
   @@index([created_at])
@@ -37,9 +42,12 @@ model Dataset {
 
 model DatasetBlob {
   id               String   @id @default(uuid())
-  dataset_id       String   @unique
+  dataset_id       String
+  file_index       Int      // Order within dataset (0, 1, 2, ...)
   preview_blob_id  String
   full_blob_id     String
+  duration_seconds Int
+  seal_policy_id   String?
   backup_key       Bytes?   // Encrypted Seal backup key for emergency decryption
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
@@ -47,6 +55,7 @@ model DatasetBlob {
   // Relations
   dataset          Dataset  @relation(fields: [dataset_id], references: [id], onDelete: Cascade)
 
+  @@unique([dataset_id, file_index])
   @@index([dataset_id])
 }
 
@@ -57,6 +66,10 @@ model Purchase {
   price            BigInt
   tx_digest        String   @unique
   timestamp        DateTime @default(now())
+
+  // Multi-file purchase support
+  purchase_type    String   @default("bundle")  // "bundle" | "individual"
+  file_indices     Int[]    @default([])        // [0,2,4] if buying specific files
 
   // Relations
   dataset          Dataset  @relation(fields: [dataset_id], references: [id], onDelete: Cascade)

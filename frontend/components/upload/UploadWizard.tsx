@@ -45,6 +45,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
   const [state, setState] = useState<UploadWizardState>({
     step: 'file-upload',
     audioFile: null,
+    audioFiles: [], // Multi-file support
     metadata: null,
     encryption: null,
     walrusUpload: null,
@@ -108,6 +109,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
         setState({
           step: 'file-upload',
           audioFile: null,
+          audioFiles: [],
           metadata: null,
           encryption: null,
           walrusUpload: null,
@@ -183,17 +185,24 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
               {state.step === 'file-upload' && (
                 <FileUploadStep
                   audioFile={state.audioFile}
+                  audioFiles={state.audioFiles}
                   onFileSelected={(audioFile) => {
                     setState((prev) => ({ ...prev, audioFile }));
                     goToNextStep();
                   }}
+                  onFilesSelected={(audioFiles) => {
+                    setState((prev) => ({ ...prev, audioFiles }));
+                  }}
+                  onContinue={goToNextStep}
                   error={state.error}
+                  multiFile={true}
                 />
               )}
 
               {state.step === 'metadata' && (
                 <MetadataStep
                   metadata={state.metadata}
+                  audioFiles={state.audioFiles}
                   onSubmit={(metadata) => {
                     setState((prev) => ({ ...prev, metadata }));
                     goToNextStep();
@@ -206,6 +215,8 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
               {state.step === 'encryption' && (
                 <EncryptionStep
                   audioFile={state.audioFile!}
+                  audioFiles={state.audioFiles}
+                  metadata={state.metadata!}
                   onEncrypted={(result) => {
                     // Extract walrusUpload info from encryption result
                     const walrusUpload: WalrusUploadResult = {
@@ -213,6 +224,8 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
                       previewBlobId: result.previewBlobId,
                       seal_policy_id: result.seal_policy_id,
                       backupKey: result.backupKey,
+                      files: result.files, // Multi-file results
+                      bundleDiscountBps: result.bundleDiscountBps,
                     };
 
                     // Store both encryption metadata and walrus upload info

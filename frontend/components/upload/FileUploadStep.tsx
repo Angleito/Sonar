@@ -9,9 +9,13 @@ import { SonarButton } from '@/components/ui/SonarButton';
 import { GlassCard } from '@/components/ui/GlassCard';
 
 interface FileUploadStepProps {
-  audioFile: AudioFile | null;
-  onFileSelected: (audioFile: AudioFile) => void;
+  audioFile: AudioFile | null; // Backwards compatibility (single file mode)
+  audioFiles?: AudioFile[]; // Multi-file mode
+  onFileSelected: (audioFile: AudioFile) => void; // Single file callback
+  onFilesSelected?: (audioFiles: AudioFile[]) => void; // Multi-file callback
+  onContinue?: () => void; // Explicit continue action for multi-file mode
   error: string | null;
+  multiFile?: boolean; // Enable multi-file selection (default: true)
 }
 
 const SUPPORTED_FORMATS = [
@@ -24,7 +28,9 @@ const SUPPORTED_FORMATS = [
   'audio/m4a',
 ];
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+const MAX_FILE_SIZE = 13 * 1024 * 1024 * 1024; // 13 GiB (Walrus maximum)
+const MAX_FILES = 100; // From contract: maxFilesPerDataset
+// No limit on total dataset size - only per-file and file count limits
 
 /**
  * FileUploadStep Component
@@ -32,12 +38,17 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
  */
 export function FileUploadStep({
   audioFile,
+  audioFiles = [],
   onFileSelected,
+  onFilesSelected,
+  onContinue,
   error,
+  multiFile = true,
 }: FileUploadStepProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<AudioFile[]>(audioFiles);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = useCallback((file: File): string | null => {
@@ -46,9 +57,21 @@ export function FileUploadStep({
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return `File too large. Maximum size is 500MB`;
+      const fileSizeGB = (file.size / (1024 * 1024 * 1024)).toFixed(2);
+      return `File too large (${fileSizeGB} GiB). Maximum size is 13 GiB (Walrus limit)`;
     }
 
+    return null;
+  }, []);
+
+  const validateMultipleFiles = useCallback((files: File[], existingFiles: AudioFile[] = []): string | null => {
+    const totalFiles = files.length + existingFiles.length;
+
+    if (totalFiles > MAX_FILES) {
+      return `Too many files. Maximum is ${MAX_FILES} files per dataset`;
+    }
+
+    // No total size limit - only per-file limits (13 GiB each) and file count (100 max)
     return null;
   }, []);
 
@@ -71,35 +94,68 @@ export function FileUploadStep({
     });
   };
 
-  const processFile = async (file: File) => {
+  const processFiles = async (files: File[]) => {
     setValidationError(null);
     setIsProcessing(true);
 
     try {
-      // Validate file
-      const validationResult = validateFile(file);
-      if (validationResult) {
-        setValidationError(validationResult);
-        setIsProcessing(false);
-        return;
+      // Validate in multi-file mode
+      if (multiFile) {
+        const multiValidation = validateMultipleFiles(files, selectedFiles);
+        if (multiValidation) {
+          setValidationError(multiValidation);
+          setIsProcessing(false);
+          return;
+        }
       }
 
-      // Get audio duration
-      const duration = await getAudioDuration(file);
+      // Process each file
+      const processedFiles: AudioFile[] = [];
+      for (const file of files) {
+        // Validate individual file
+        const validationResult = validateFile(file);
+        if (validationResult) {
+          setValidationError(`${file.name}: ${validationResult}`);
+          setIsProcessing(false);
+          return;
+        }
 
-      // Create preview URL
-      const preview = URL.createObjectURL(file);
+        try {
+          // Get audio duration
+          const duration = await getAudioDuration(file);
 
-      const audioFile: AudioFile = {
-        file,
-        duration,
-        preview,
-      };
+          // Create preview URL
+          const preview = URL.createObjectURL(file);
 
-      onFileSelected(audioFile);
+          const audioFile: AudioFile = {
+            id: `${Date.now()}-${Math.random().toString(36)}`,
+            file,
+            duration,
+            preview,
+          };
+
+          processedFiles.push(audioFile);
+        } catch (err) {
+          setValidationError(
+            `${file.name}: ${err instanceof Error ? err.message : 'Failed to process audio file'}`
+          );
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      // Update state
+      if (multiFile && onFilesSelected) {
+        const newFiles = [...selectedFiles, ...processedFiles];
+        setSelectedFiles(newFiles);
+        onFilesSelected(newFiles);
+      } else if (!multiFile && processedFiles.length > 0) {
+        // Single file mode - backwards compatibility
+        onFileSelected(processedFiles[0]);
+      }
     } catch (err) {
       setValidationError(
-        err instanceof Error ? err.message : 'Failed to process audio file'
+        err instanceof Error ? err.message : 'Failed to process audio files'
       );
     } finally {
       setIsProcessing(false);
@@ -113,10 +169,10 @@ export function FileUploadStep({
 
       const files = Array.from(e.dataTransfer.files);
       if (files.length > 0) {
-        processFile(files[0]);
+        processFiles(multiFile ? files : [files[0]]);
       }
     },
-    [processFile]
+    [multiFile, processFiles]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -133,14 +189,26 @@ export function FileUploadStep({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (files && files.length > 0) {
-        processFile(files[0]);
+        processFiles(Array.from(files));
       }
     },
-    [processFile]
+    [processFiles]
   );
 
   const handleBrowseClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleRemoveFile = (fileId: string) => {
+    const fileToRemove = selectedFiles.find((f) => f.id === fileId);
+    if (fileToRemove?.preview) {
+      URL.revokeObjectURL(fileToRemove.preview);
+    }
+    const newFiles = selectedFiles.filter((f) => f.id !== fileId);
+    setSelectedFiles(newFiles);
+    if (onFilesSelected) {
+      onFilesSelected(newFiles);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -156,10 +224,35 @@ export function FileUploadStep({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const estimateUploadTime = (bytes: number): string => {
+    // Estimate based on typical broadband speed (100 Mbps = 12.5 MB/s)
+    const speedMBps = 12.5; // MB per second
+    const sizeMB = bytes / (1024 * 1024);
+    const seconds = sizeMB / speedMBps;
+
+    if (seconds < 60) {
+      return `~${Math.ceil(seconds)} seconds`;
+    } else if (seconds < 3600) {
+      return `~${Math.ceil(seconds / 60)} minutes`;
+    } else {
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.ceil((seconds % 3600) / 60);
+      return `~${hours}h ${mins}m`;
+    }
+  };
+
+  // Calculate aggregate stats for multi-file
+  const totalSize = selectedFiles.reduce((sum, f) => sum + f.file.size, 0);
+  const totalDuration = selectedFiles.reduce((sum, f) => sum + f.duration, 0);
+  const hasLargeFiles = selectedFiles.some(f => f.file.size > 5 * 1024 * 1024 * 1024); // >5GB
+
+  const showDropZone = multiFile ? selectedFiles.length === 0 : !audioFile;
+  const displayFiles = multiFile ? selectedFiles : (audioFile ? [audioFile] : []);
+
   return (
     <div className="space-y-6">
       {/* Drop Zone */}
-      {!audioFile && (
+      {showDropZone && (
         <motion.div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
@@ -181,8 +274,9 @@ export function FileUploadStep({
             type="file"
             accept={SUPPORTED_FORMATS.join(',')}
             onChange={handleFileSelect}
+            multiple={multiFile}
             className="hidden"
-            aria-label="Upload audio file"
+            aria-label={multiFile ? "Upload audio files" : "Upload audio file"}
           />
 
           <div className="flex flex-col items-center justify-center space-y-4">
@@ -199,7 +293,7 @@ export function FileUploadStep({
 
             <div className="text-center">
               <p className="text-lg font-mono text-sonar-highlight-bright mb-2">
-                Drop your audio file here
+                {multiFile ? 'Drop your audio files here' : 'Drop your audio file here'}
               </p>
               <p className="text-sm text-sonar-highlight/70">
                 or click to browse
@@ -208,14 +302,129 @@ export function FileUploadStep({
 
             <div className="text-xs text-sonar-highlight/50 font-mono space-y-1 text-center">
               <p>Supported formats: MP3, WAV, FLAC, OGG, M4A</p>
-              <p>Maximum file size: 500MB</p>
+              <p>Maximum file size: 13 GiB{multiFile ? ' per file' : ''} (Walrus limit)</p>
+              {multiFile && (
+                <>
+                  <p>Maximum files: {MAX_FILES} per dataset</p>
+                  <p className="text-sonar-signal">No limit on total dataset size</p>
+                </>
+              )}
+              <p className="text-sonar-blue mt-2">💡 Tip: FLAC recommended for quality + smaller size</p>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* File Preview */}
-      {audioFile && (
+      {/* Large File Warning */}
+      {hasLargeFiles && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            'p-4 rounded-sonar',
+            'bg-sonar-signal/10 border border-sonar-signal',
+            'text-sonar-signal font-mono text-sm'
+          )}
+        >
+          <div className="flex items-start space-x-3">
+            <Upload className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold mb-1">Large Files Detected</p>
+              <p className="text-xs text-sonar-highlight/80">
+                Estimated upload + encryption time: {estimateUploadTime(totalSize)}
+              </p>
+              <p className="text-xs text-sonar-highlight/60 mt-1">
+                Consider using FLAC compression to reduce file size without losing quality.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Multi-File Preview */}
+      {multiFile && selectedFiles.length > 0 && (
+        <>
+          {/* Aggregate Stats */}
+          <GlassCard className="bg-sonar-signal/5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-sonar bg-sonar-signal/10">
+                  <File className="w-6 h-6 text-sonar-signal" />
+                </div>
+                <div>
+                  <h3 className="font-mono text-lg text-sonar-highlight-bright">
+                    {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+                  </h3>
+                  <div className="flex items-center space-x-4 text-sm text-sonar-highlight/70 font-mono">
+                    <span>Total: {formatFileSize(totalSize)}</span>
+                    <span>•</span>
+                    <span>Duration: {formatDuration(totalDuration)}</span>
+                  </div>
+                </div>
+              </div>
+              <SonarButton
+                variant="secondary"
+                onClick={handleBrowseClick}
+                className="text-sm"
+              >
+                Add More
+              </SonarButton>
+            </div>
+          </GlassCard>
+
+          {/* File List */}
+          <div className="space-y-2">
+            {selectedFiles.map((file) => (
+              <GlassCard key={file.id}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    <div className="p-2 rounded-sonar bg-sonar-blue/10">
+                      <Volume2 className="w-5 h-5 text-sonar-blue" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-mono text-sm text-sonar-highlight-bright truncate">
+                        {file.file.name}
+                      </h4>
+                      <div className="flex items-center space-x-3 text-xs text-sonar-highlight/70 font-mono">
+                        <span>{formatFileSize(file.file.size)}</span>
+                        <span>•</span>
+                        <span>{formatDuration(file.duration)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveFile(file.id!)}
+                    className={cn(
+                      'text-sonar-highlight/50 hover:text-sonar-coral',
+                      'transition-colors p-2 rounded-sonar',
+                      'focus:outline-none focus:ring-2 focus:ring-sonar-coral ml-2'
+                    )}
+                    aria-label="Remove file"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+
+          {/* Continue Button */}
+          {onContinue && selectedFiles.length > 0 && (
+            <div className="flex justify-end mt-4">
+              <SonarButton
+                variant="primary"
+                onClick={onContinue}
+                disabled={isProcessing}
+              >
+                Continue with {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''}
+              </SonarButton>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Single File Preview (Backwards Compatibility) */}
+      {!multiFile && audioFile && (
         <GlassCard>
           <div className="space-y-4">
             <div className="flex items-start justify-between">
@@ -316,6 +525,32 @@ export function FileUploadStep({
           </div>
         </div>
       </GlassCard>
+
+      {/* High-Quality Audio Guidance */}
+      {multiFile && displayFiles.length === 0 && (
+        <GlassCard className="bg-sonar-signal/5">
+          <div className="flex items-start space-x-3">
+            <Volume2 className="w-5 h-5 text-sonar-signal mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-sonar-highlight/80 space-y-2">
+              <p className="font-mono font-semibold text-sonar-signal">
+                High-Quality Audio Support
+              </p>
+              <p>
+                We support studio-quality audio up to 13 GiB per file. This includes:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li>Uncompressed WAV at any sample rate (44.1kHz - 192kHz)</li>
+                <li>24-bit and 32-bit float recordings</li>
+                <li>FLAC lossless compression (recommended for faster uploads)</li>
+                <li>No limit on total dataset size - upload as many files as needed</li>
+              </ul>
+              <p className="text-xs text-sonar-highlight/60 mt-2">
+                ⏱️ Note: Large files (5GB+) may take 10-20 minutes to upload and encrypt.
+              </p>
+            </div>
+          </div>
+        </GlassCard>
+      )}
     </div>
   );
 }

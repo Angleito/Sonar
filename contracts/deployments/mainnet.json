@@ -1,0 +1,19 @@
+{
+  "network": "mainnet",
+  "packageId": "0xc05ced8197d798ce8b49d2043c52823696736232ab9a4d2e93e7b5b4e8b1466e",
+  "version": 2,
+  "upgradeDigest": "4Q3bfdanmfBvgywVWk1hehSz6RKfEkvYGKPLns8jKgsV",
+  "upgradedAt": "1735742700000",
+  "epoch": 939,
+  "modules": ["economics", "marketplace", "sonar_token"],
+  "objects": {
+    "upgradeCap": "0x71d3aed5ef5e502ed075b8fc7c59ce5c7a7b42677ad942a936cca46ab2ec05a1"
+  },
+  "features": {
+    "multiFileDatasets": true,
+    "bundleDiscounts": true,
+    "maxFilesPerDataset": 100,
+    "maxBundleDiscountBps": 5000
+  },
+  "upgradeNotes": "Added multi-file dataset support with submit_audio_dataset function, DatasetSubmission struct, and bundle discount economics"
+}

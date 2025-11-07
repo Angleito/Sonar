@@ -46,11 +46,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size (max 500MB for Walrus testnet)
-    const maxSize = 500 * 1024 * 1024; // 500MB
+    // Validate file size (max 13 GiB - Walrus maximum)
+    const maxSize = 13 * 1024 * 1024 * 1024; // 13 GiB
     if (file.size > maxSize) {
+      const fileSizeGB = (file.size / (1024 * 1024 * 1024)).toFixed(2);
       return NextResponse.json(
-        { error: `File too large. Maximum size is ${maxSize / (1024 * 1024)}MB` },
+        { error: `File too large (${fileSizeGB} GiB). Maximum size is 13 GiB (Walrus limit)` },
         { status: 400 }
       );
     }
