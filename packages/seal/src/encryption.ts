@@ -10,8 +10,8 @@ import type {
   EnvelopeEncryptionResult,
   EncryptionMetadata,
   ProgressCallback,
-  DemType,
 } from './types';
+import { DemType } from './types';
 import { EncryptionError } from './errors';
 import {
   DEFAULT_THRESHOLD,

@@ -3,7 +3,7 @@
  * Configuration constants and defaults
  */
 
-import type { DemType } from './types';
+import { DemType } from './types';
 
 /**
  * Default encryption threshold
