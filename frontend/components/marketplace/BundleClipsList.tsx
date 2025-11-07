@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Dataset } from '@/types/blockchain';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { formatNumber } from '@/lib/utils';
-import { Play, Pause, ExternalLink } from 'lucide-react';
+import { Play, Pause } from 'lucide-react';
 
 export interface BundleClipsListProps {
   clips: Dataset[];
@@ -98,24 +98,18 @@ export function BundleClipsList({ clips, className }: BundleClipsListProps) {
                 )}
               </div>
 
-              {/* External Link */}
-              <a
-                href={`https://freesound.org/people/${clip.creator}/sounds/${clip.id}/`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-shrink-0 p-2 text-sonar-highlight-bright/60 hover:text-sonar-highlight transition-colors"
-                title="View on Freesound.org"
-              >
-                <ExternalLink size={16} />
-              </a>
+              {/* Clip Identifier */}
+              <div className="flex-shrink-0 text-[10px] font-mono px-2 py-1 bg-sonar-abyss/60 rounded border border-white/5 text-sonar-highlight-bright/60">
+                {clip.id.slice(0, 6)}…
+              </div>
             </div>
           </GlassCard>
         ))}
       </div>
 
       <div className="mt-6 text-sm text-sonar-highlight-bright/60 text-center">
-        <p>All clips sourced from <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="text-sonar-highlight hover:underline">Freesound.org</a></p>
-        <p className="mt-1">Licensed under Creative Commons</p>
+        <p>These reference clips are synthetic samples bundled for demo purposes.</p>
+        <p className="mt-1">Replace them with your own community submissions.</p>
       </div>
     </div>
   );

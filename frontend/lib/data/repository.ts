@@ -63,7 +63,7 @@ export function parseDataset(raw: any): Dataset {
     storage_size: raw.storage_size ? Number(raw.storage_size) : 0,
     verified,
     updated_at: raw.updated_at ? Number(raw.updated_at) : createdAt,
-    previewUrl: raw.previewUrl, // Direct preview URL (e.g., from Freesound)
+    previewUrl: raw.previewUrl, // Direct preview URL when available
     voting_stats: raw.voting_stats, // Community voting data
   };
 }

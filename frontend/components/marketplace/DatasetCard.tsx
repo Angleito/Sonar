@@ -33,7 +33,7 @@ export function DatasetCard({ dataset, onPurchase }: DatasetCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Use direct preview URL if available (e.g., from Freesound), otherwise use backend endpoint
+  // Use direct preview URL if available, otherwise use backend endpoint
   const previewUrl = dataset.previewUrl || getPreviewUrl(dataset.id);
 
   // Debug: Log preview URL source

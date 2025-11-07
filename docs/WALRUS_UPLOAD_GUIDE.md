@@ -33,10 +33,10 @@ sui client faucet
 
 You need 3 audio files, each at least 5 minutes long. Options:
 
-**Option A: Use Free Audio from Freesound**
-1. Visit https://freesound.org/
-2. Search for "ambient" or "soundscape" with duration filter > 5 minutes
-3. Download under Creative Commons license
+**Option A: Use Open-Licensed Audio Libraries**
+1. Visit a Creative Commons library (e.g., Free Music Archive, Openverse)
+2. Filter for "ambient" or "soundscape" clips longer than 5 minutes
+3. Download under a license compatible with your use case
 4. Convert to WAV if needed: `ffmpeg -i input.mp3 output.wav`
 
 **Option B: Use Sample Generator**
@@ -191,5 +191,4 @@ After uploading real audio:
 
 - Walrus Documentation: https://docs.walrus.site
 - Walrus Testnet Aggregator: https://aggregator.walrus-testnet.walrus.space
-- Freesound Audio Library: https://freesound.org/
 - FFmpeg Documentation: https://ffmpeg.org/documentation.html

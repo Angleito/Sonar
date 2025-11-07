@@ -21,7 +21,7 @@ export default function MarketplaceTestnetPage() {
     refetch,
   } = useQuery({
     queryKey: ['marketplace-testnet', 'datasets'],
-    queryFn: () => repository.getDatasets({ pendingOnly: true }), // Show only pending (unreviewed) submissions
+    queryFn: () => repository.getDatasets(), // Fetch submissions awaiting review
     staleTime: 10_000, // Refresh more frequently for voting updates
     refetchOnWindowFocus: true,
   });
@@ -96,7 +96,7 @@ export default function MarketplaceTestnetPage() {
             </div>
             <div className="text-sm text-sonar-highlight-bright/60 font-mono whitespace-nowrap">
               {datasets?.length === 1 && datasets[0]?.bundled_clips
-                ? `1 bundle dataset (${datasets[0].bundled_clips.length} Freesound clips)`
+                ? `1 bundle dataset (${datasets[0].bundled_clips.length} reference clips)`
                 : `${datasets?.length ?? 0} datasets`}
             </div>
           </div>
@@ -107,7 +107,7 @@ export default function MarketplaceTestnetPage() {
             </div>
           ) : error ? (
             <GlassCard className="text-center py-12 space-y-4">
-              <p className="text-sonar-coral text-lg font-mono">Failed to load FreeSound bundle</p>
+              <p className="text-sonar-coral text-lg font-mono">Failed to load testnet bundle</p>
               <p className="text-sm text-sonar-highlight-bright/60">
                 {(error as Error).message}
               </p>

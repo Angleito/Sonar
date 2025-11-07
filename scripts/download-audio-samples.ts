@@ -1,10 +1,5 @@
 #!/usr/bin/env bun
 
-/**
- * Download audio samples from FreeSound.org or generate synthetic audio
- * Usage: bun scripts/download-audio-samples.ts
- */
-
 import { promises as fs } from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -12,18 +7,15 @@ import { execSync } from 'child_process';
 interface AudioConfig {
   id: string;
   title: string;
-  freesound_id: number;
-  freesound_search: string;
   license: string;
   author: string;
-  url: string;
+  source?: string;
   duration_seconds: number;
   notes?: string;
 }
 
 const CONFIG_PATH = './scripts/audio-config.json';
 const OUTPUT_DIR = './frontend/public/audio';
-const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY;
 
 async function ensureOutputDir(): Promise<void> {
   try {
@@ -41,59 +33,6 @@ async function loadConfig(): Promise<AudioConfig[]> {
     return config.datasets;
   } catch (error) {
     throw new Error(`Failed to load config: ${error}`);
-  }
-}
-
-async function downloadFromFreeSound(
-  dataset: AudioConfig
-): Promise<{ preview: Buffer; full: Buffer }> {
-  if (!FREESOUND_API_KEY) {
-    throw new Error('FREESOUND_API_KEY not set. Cannot download from FreeSound.');
-  }
-
-  console.log(`\nDownloading ${dataset.title}...`);
-
-  try {
-    // Download the audio file
-    const response = await fetch(
-      `https://freesound.org/apiv2/sounds/${dataset.freesound_id}/download/`,
-      {
-        headers: {
-          Authorization: `Token ${FREESOUND_API_KEY}`,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`FreeSound API error: ${response.statusText}`);
-    }
-
-    const audioBuffer = await response.arrayBuffer();
-    const full = Buffer.from(audioBuffer);
-
-    console.log(`  Downloaded ${(full.length / 1024 / 1024).toFixed(2)} MB`);
-
-    // Generate 30s preview using ffmpeg
-    const tempInput = `/tmp/${dataset.id}-full.mp3`;
-    const tempPreview = `/tmp/${dataset.id}-preview.mp3`;
-
-    await fs.writeFile(tempInput, full);
-
-    // Extract first 30 seconds
-    execSync(
-      `ffmpeg -i ${tempInput} -t 30 -q:a 9 -n ${tempPreview} 2>/dev/null`,
-      { stdio: 'pipe' }
-    );
-
-    const preview = await fs.readFile(tempPreview);
-
-    // Cleanup temp files
-    await fs.unlink(tempInput);
-    await fs.unlink(tempPreview);
-
-    return { preview, full };
-  } catch (error) {
-    throw new Error(`Failed to download from FreeSound: ${error}`);
   }
 }
 
@@ -167,7 +106,7 @@ This file documents the sources and licensing information for all audio samples 
 
 - **License**: ${dataset.license}
 - **Author**: ${dataset.author}
-- **Source**: [${dataset.freesound_search}](${dataset.url})
+- **Source**: ${dataset.source ?? 'Synthetic sample generated locally'}
 - **Duration**: ${dataset.duration_seconds}s
 
 `;
@@ -180,8 +119,8 @@ When redistributing, please maintain proper attribution as specified above.
 
 ## Note
 
-If audio was generated synthetically (due to missing FreeSound API key),
-generated content is not subject to external licensing restrictions.
+Synthetic audio is generated locally using ffmpeg sine wave synthesis.
+Generated content is not subject to external licensing restrictions.
 `;
 
   const sourcesPath = path.join(OUTPUT_DIR, 'AUDIO_SOURCES.md');
@@ -205,33 +144,17 @@ async function main(): Promise<void> {
     const datasets = await loadConfig();
     console.log(`\nProcessing ${datasets.length} datasets...\n`);
 
-    const useFreeSound = !!FREESOUND_API_KEY;
-    console.log(
-      useFreeSound
-        ? 'Using FreeSound API for downloads'
-        : 'Generating synthetic audio (FREESOUND_API_KEY not set)'
-    );
+    console.log('Generating synthetic audio previews (external integrations disabled).');
 
-    // Download or generate audio for each dataset
+    // Generate audio for each dataset
     for (const dataset of datasets) {
       try {
-        let audio;
-
-        if (useFreeSound) {
-          audio = await downloadFromFreeSound(dataset);
-        } else {
-          console.log(`\nProcessing ${dataset.title}...`);
-          audio = await generateSyntheticAudio(dataset.duration_seconds);
-        }
+        console.log(`\nProcessing ${dataset.title}...`);
+        const audio = await generateSyntheticAudio(dataset.duration_seconds);
 
         await saveAudioFiles(dataset, audio);
       } catch (error) {
         console.error(`✗ Failed to process ${dataset.id}: ${error}`);
-        if (useFreeSound) {
-          console.log('  Falling back to synthetic audio...');
-          const audio = await generateSyntheticAudio(dataset.duration_seconds);
-          await saveAudioFiles(dataset, audio);
-        }
       }
     }
 

@@ -72,7 +72,7 @@ export default function MarketplaceTestnetDetailPage() {
                 </SignalBadge>
               </div>
               <p className="text-sm text-sonar-highlight-bright/60">
-                A curated collection of {dataset.bundled_clips.length} audio clips from Freesound.org.{' '}
+                A curated collection of {dataset.bundled_clips.length} reference clips prepared for testnet review.{' '}
                 Total duration: {formatNumber(dataset.duration_seconds)} seconds.
               </p>
             </header>
@@ -88,7 +88,7 @@ export default function MarketplaceTestnetDetailPage() {
                 Want to Submit Your Own Audio?
               </h3>
               <p className="text-sm text-sonar-highlight-bright/70">
-                This bundle contains reference audio from Freesound.org for demo purposes. You can upload your own
+                This bundle contains synthetic reference audio for demo purposes. You can upload your own
                 audio datasets to the SONAR marketplace through the upload wizard.
               </p>
               <div className="flex gap-3">
@@ -107,10 +107,7 @@ export default function MarketplaceTestnetDetailPage() {
               </h3>
               <div className="space-y-2 text-sm text-sonar-highlight-bright/70">
                 <p>
-                  <span className="font-mono text-sonar-highlight">Source:</span> All clips sourced from{' '}
-                  <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="text-sonar-highlight hover:underline">
-                    Freesound.org
-                  </a>
+                  <span className="font-mono text-sonar-highlight">Source:</span> Synthetic reference bundle for community demos
                 </p>
                 <p>
                   <span className="font-mono text-sonar-highlight">License:</span> Creative Commons (various)
@@ -141,7 +138,7 @@ export default function MarketplaceTestnetDetailPage() {
               </div>
               <p className="text-sm text-sonar-highlight-bright/60">
                 Submitted by <span className="font-mono text-sonar-highlight">{dataset.creator}</span>.{' '}
-                Sourced from FreeSound. Public preview only — encryption will be added if the community approves.
+                Public preview only — encryption will be added if the community approves.
               </p>
             </header>
 
@@ -193,9 +190,9 @@ export default function MarketplaceTestnetDetailPage() {
                     </span>
                   </p>
                   <p>
-                    FreeSound downloads:{' '}
+                    Community interactions:{' '}
                     <span className="font-mono text-sonar-highlight">
-                      {formatNumber(dataset.total_purchases)}
+                      {formatNumber(dataset.total_purchases ?? 0)}
                     </span>
                   </p>
                 </div>

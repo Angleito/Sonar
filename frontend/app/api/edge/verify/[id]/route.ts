@@ -13,10 +13,10 @@ export const runtime = 'edge';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const verificationId = params.id;
+    const { id: verificationId } = await context.params;
 
     if (!verificationId) {
       return NextResponse.json(

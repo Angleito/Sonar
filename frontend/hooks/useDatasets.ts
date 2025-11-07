@@ -106,8 +106,8 @@ export function useDataset(datasetId: string) {
     refetchOnWindowFocus: false, // Don't refetch on focus for detail pages
     retry: (failureCount, error) => {
       // Bail out on 404 errors to prevent redundant retries
-      const err = error as Error & { code?: string; status?: number };
-      if (err.code === 'FREESOUND_DATASET_NOT_FOUND' || err.status === 404) {
+      const err = error as Error & { status?: number };
+      if (err.status === 404) {
         return false;
       }
       // Retry up to 2 times for other errors

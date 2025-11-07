@@ -16,8 +16,7 @@
     "db:seed": "prisma db seed",
     "db:push": "prisma db push",
     "db:reset": "prisma migrate reset",
-    "generate": "prisma generate",
-    "upload-freesound": "bun run src/scripts/upload-freesound-to-walrus.ts"
+    "generate": "prisma generate"
   },
   "prisma": {
     "seed": "bun prisma/seed.ts"
@@ -35,7 +34,6 @@
     "jsonwebtoken": "^9.0.0",
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",
-    "redis": "^4.6.13",
     "undici": "^5.28.4"
   },
   "devDependencies": {

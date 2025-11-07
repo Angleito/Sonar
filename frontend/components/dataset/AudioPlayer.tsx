@@ -21,7 +21,7 @@ export function AudioPlayer({ dataset }: AudioPlayerProps) {
   const waveformRef = useRef<HTMLDivElement>(null);
   const { token, isAuthenticated, isTokenValid } = useAuth();
 
-  // Use direct preview URL if available (e.g., from Freesound), otherwise use backend endpoint
+  // Use direct preview URL if available, otherwise use backend endpoint
   const previewUrl = dataset.previewUrl || getPreviewUrl(dataset.id);
 
   // Use stream URL (requires JWT) if user is authenticated

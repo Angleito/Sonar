@@ -119,30 +119,17 @@ async function start(): Promise<void> {
     }
   });
 
-  // Initialize Redis (optional - only if REDIS_URL is set)
-  if (process.env.REDIS_URL) {
-    try {
-      const { redis } = await import('./lib/cache/redis-client');
-      await redis.init();
-      fastify.log.info('Redis cache initialized');
-    } catch (error) {
-      fastify.log.warn('Redis initialization failed - continuing without cache:', error);
-    }
-  }
-
   // Register routes
   const { registerAuthRoutes } = await import('./routes/auth');
   const { registerDataRoutes } = await import('./routes/data');
   const { registerKioskRoutes } = await import('./routes/kiosk');
   const { registerMonitoringRoutes } = await import('./routes/monitoring');
-  const { registerCacheRoutes } = await import('./routes/cache');
   const { syncKioskSnapshotToDatabase } = await import('./lib/kiosk/state');
 
   await registerAuthRoutes(fastify);
   await registerDataRoutes(fastify);
   await registerKioskRoutes(fastify);
   await registerMonitoringRoutes(fastify);
-  await registerCacheRoutes(fastify);
 
   fastify.log.info('Routes registered');
 
