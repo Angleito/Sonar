@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Lock, Upload, Shield, CheckCircle } from 'lucide-react';
+import { Lock, Upload, Shield, CheckCircle, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AudioFile, EncryptionResult, FileUploadResult } from '@/lib/types/upload';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -55,6 +55,24 @@ export function EncryptionStep({
       onError(sealError);
     }
   }, [sealError]);
+
+  // Prevent tab close/refresh during upload
+  useEffect(() => {
+    const isUploading = stage !== 'completed' && progress > 0;
+
+    if (!isUploading) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ''; // Chrome requires returnValue to be set
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [stage, progress]);
 
   const performEncryptionAndUpload = async () => {
     try {
@@ -161,9 +179,34 @@ export function EncryptionStep({
   ];
 
   const currentStageIndex = stages.findIndex((s) => s.key === stage);
+  const isUploading = stage !== 'completed' && progress > 0;
 
   return (
     <div className="space-y-6">
+      {/* Warning Banner */}
+      {isUploading && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            'p-4 rounded-sonar',
+            'bg-sonar-coral/10 border-2 border-sonar-coral',
+            'flex items-start space-x-3'
+          )}
+        >
+          <AlertTriangle className="w-5 h-5 text-sonar-coral mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-mono font-semibold text-sonar-coral mb-1">
+              Do Not Close This Tab
+            </p>
+            <p className="text-sm text-sonar-highlight/80">
+              Your upload is in progress. Closing or refreshing this browser tab will
+              interrupt the upload process and you'll need to start over.
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Progress Circle */}
       <div className="flex flex-col items-center justify-center py-8">
         <div className="relative w-48 h-48">
