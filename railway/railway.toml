@@ -1,7 +1,10 @@
 # =============================================================================
 # Railway Configuration for SONAR SEAL Key Server
 # =============================================================================
-# Railway will auto-detect the Dockerfile in the root directory
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
