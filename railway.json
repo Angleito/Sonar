@@ -6,7 +6,6 @@
     "dockerfilePath": "railway/Dockerfile"
   },
   "deploy": {
-    "startCommand": "bun run backend/src/index.ts",
     "restartPolicyMaxRetries": 5,
     "restartPolicyWindow": 600
   },
