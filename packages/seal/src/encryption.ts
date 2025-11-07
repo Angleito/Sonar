@@ -190,7 +190,7 @@ async function encryptLargeFile(
       threshold,
       packageId,
       accessPolicy,
-      demType: 'AES' as DemType, // File encrypted with AES, key sealed with Seal
+      demType: DemType.AES, // File encrypted with AES, key sealed with Seal
       timestamp: Date.now(),
       originalSize: data.length,
       encryptedSize: envelope.length,

@@ -36,7 +36,7 @@ export const DEFAULT_TIMEOUT_MS = 10000;
  * Default DEM (Data Encapsulation Method)
  * AES-256-GCM is recommended for best performance
  */
-export const DEFAULT_DEM_TYPE: DemType = 'AES' as const;
+export const DEFAULT_DEM_TYPE: DemType = DemType.AES;
 
 /**
  * Default cache strategy
