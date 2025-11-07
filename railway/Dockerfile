@@ -58,7 +58,7 @@ echo "✅ Environment variables verified"\n\
 \n\
 # Substitute Railway secrets into config template\n\
 echo "📝 Generating config from template..."\n\
-sed "s/REPLACE_KEY_SERVER_OBJECT_ID/${KEY_SERVER_OBJECT_ID}/g" /app/config/template.yaml > /app/config/key-server-config.yaml\n\
+sed "s|0x0000000000000000000000000000000000000000000000000000000000000000|${KEY_SERVER_OBJECT_ID}|g" /app/config/template.yaml > /app/config/key-server-config.yaml\n\
 \n\
 echo "✅ Config generated successfully"\n\
 echo "🚀 Starting key server..."\n\

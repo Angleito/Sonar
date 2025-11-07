@@ -10,7 +10,7 @@
 # 3. Dockerfile substitutes REPLACE_KEY_SERVER_OBJECT_ID at startup
 
 # Sui network configuration
-network: Testnet
+network: Mainnet
 
 # Server mode: Permissioned (only SONAR package can request keys)
 server_mode: !Permissioned
@@ -20,7 +20,8 @@ server_mode: !Permissioned
 
       # Key server object ID (registered on-chain)
       # THIS VALUE IS REPLACED AT RUNTIME from Railway secret: KEY_SERVER_OBJECT_ID
-      key_server_object_id: "REPLACE_KEY_SERVER_OBJECT_ID"
+      # Placeholder format: valid Sui address (64 hex chars with 0x prefix)
+      key_server_object_id: "0x0000000000000000000000000000000000000000000000000000000000000000"
 
       # Allowed package IDs (only these can request derived keys)
       package_ids:
