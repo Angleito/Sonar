@@ -6,7 +6,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { toast } from 'sonner';
 import { useKioskPrice } from '@/hooks/useKioskPrice';
@@ -14,6 +14,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { requestKioskAccessGrant } from '@/lib/api/client';
 import { calculateSuiNeeded, formatBigIntAmount } from '@/lib/utils';
 import type { Dataset } from '@/types/blockchain';
+import { SONAR_COIN_TYPE } from '@/lib/sui/client';
+import { collectCoinsForAmount, prepareCoinPayment } from '@/lib/sui/coin-utils';
 
 interface KioskPurchaseFlowProps {
   dataset: Dataset;
@@ -30,6 +32,7 @@ export function KioskPurchaseFlow({
   const { token } = useAuth();
   const { price, isLoading: isPriceLoading } = useKioskPrice();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const suiClient = useSuiClient();
 
   const [step, setStep] = useState<'choose' | 'buy-sonar' | 'buy-dataset'>('choose');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -147,16 +150,42 @@ export function KioskPurchaseFlow({
     try {
       setIsProcessing(true);
 
+      if (!process.env.NEXT_PUBLIC_MARKETPLACE_ID) {
+        throw new Error('Marketplace ID is not configured');
+      }
+
+      if (SONAR_COIN_TYPE === '0x0::sonar::SONAR') {
+        throw new Error('SONAR coin type is not configured');
+      }
+
+      const requiredAmount = datasetPriceInSonar;
+      const { coins, total } = await collectCoinsForAmount(
+        suiClient,
+        account.address,
+        SONAR_COIN_TYPE,
+        requiredAmount
+      );
+
+      if (total < requiredAmount) {
+        throw new Error('Insufficient SONAR balance. Please run the SONAR purchase step first.');
+      }
+
       // Build transaction for purchase_dataset
       const txn = new Transaction();
+      const paymentCoin = prepareCoinPayment({
+        tx: txn,
+        owner: account.address,
+        coins,
+        total,
+        required: requiredAmount,
+      });
+
       txn.moveCall({
         target: `${process.env.NEXT_PUBLIC_PACKAGE_ID}::marketplace::purchase_dataset`,
         arguments: [
           txn.object(process.env.NEXT_PUBLIC_MARKETPLACE_ID!),
           txn.object(dataset.id),
-          // In real implementation, would select SONAR coin from wallet
-          // Keep as BigInt to avoid precision loss
-          txn.pure.u64(datasetPriceInSonar),
+          paymentCoin,
         ],
       });
 

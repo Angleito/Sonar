@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRepository } from '@/providers/repository-provider';
 import type { Dataset, DatasetFilter } from '@/types/blockchain';
 
@@ -97,13 +97,33 @@ export function useDatasetSearch(query: string, filter?: DatasetFilter) {
  */
 export function useDataset(datasetId: string) {
   const repository = useRepository();
+  const queryClient = useQueryClient();
 
   return useQuery<Dataset, Error>({
     queryKey: ['dataset', datasetId],
     queryFn: () => repository.getDataset(datasetId),
     staleTime: 5 * 60_000, // 5 minutes (individual datasets change less frequently)
     refetchOnWindowFocus: false, // Don't refetch on focus for detail pages
-    retry: 2,
+    retry: (failureCount, error) => {
+      // Bail out on 404 errors to prevent redundant retries
+      const err = error as Error & { code?: string; status?: number };
+      if (err.code === 'FREESOUND_DATASET_NOT_FOUND' || err.status === 404) {
+        return false;
+      }
+      // Retry up to 2 times for other errors
+      return failureCount < 2;
+    },
+    initialData: () => {
+      // Try to reuse data from the datasets list query to avoid redundant fetches
+      const datasetsQueries = queryClient.getQueriesData<Dataset[]>({ queryKey: ['datasets'] });
+      for (const [, datasets] of datasetsQueries) {
+        if (datasets) {
+          const dataset = datasets.find(d => d.id === datasetId);
+          if (dataset) return dataset;
+        }
+      }
+      return undefined;
+    },
   });
 }
 

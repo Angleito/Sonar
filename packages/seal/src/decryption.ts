@@ -1,0 +1,399 @@
+/**
+ * @sonar/seal - Decryption APIs
+ * High-level decryption functions with batch support and key caching
+ */
+
+import type { SealClient } from '@mysten/seal';
+import { Transaction } from '@mysten/sui/transactions';
+import type {
+  DecryptFileOptions,
+  DecryptionResult,
+  DecryptionMetadata,
+  BatchDecryptItem,
+  BatchDecryptOptions,
+  ProgressCallback,
+} from './types';
+import { DecryptionError, SessionExpiredError, PolicyDeniedError } from './errors';
+import { DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE } from './constants';
+import { parsePackageId, hexToBytes, retry } from './utils';
+import { ensureSessionValid } from './session';
+
+/**
+ * Decrypt a file or data blob
+ * Automatically detects envelope encryption and handles accordingly
+ */
+export async function decryptFile(
+  client: SealClient,
+  encryptedData: Uint8Array,
+  options: DecryptFileOptions,
+  onProgress?: ProgressCallback
+): Promise<DecryptionResult> {
+  const {
+    sessionKey,
+    packageId,
+    identity,
+    policyModule,
+    policyArgs = [],
+    suiClient,
+  } = options;
+
+  onProgress?.(0, 'Preparing decryption...');
+
+  // Ensure session is valid
+  try {
+    ensureSessionValid(sessionKey);
+  } catch (error) {
+    throw new SessionExpiredError();
+  }
+
+  onProgress?.(10, 'Building policy transaction...');
+
+  // Build policy approval transaction
+  const tx = new Transaction();
+  const target = `${packageId}::${policyModule}::seal_approve`;
+
+  tx.moveCall({
+    target,
+    arguments: [
+      tx.pure.vector('u8', hexToBytes(identity)),
+      ...policyArgs.map((arg) => tx.object(arg)),
+    ],
+  });
+
+  const txBytes = await tx.build({ client: suiClient });
+
+  onProgress?.(30, 'Checking access policy...');
+
+  try {
+    // Check if envelope encryption
+    const isEnvelope = checkIfEnvelope(encryptedData);
+
+    if (isEnvelope) {
+      onProgress?.(40, 'Detected envelope encryption...');
+      return await decryptEnvelope(
+        client,
+        encryptedData,
+        sessionKey,
+        txBytes,
+        identity,
+        policyModule,
+        onProgress
+      );
+    } else {
+      onProgress?.(40, 'Using direct Seal decryption...');
+      return await decryptDirect(
+        client,
+        encryptedData,
+        sessionKey,
+        txBytes,
+        identity,
+        policyModule,
+        onProgress
+      );
+    }
+  } catch (error) {
+    if (error instanceof DecryptionError) {
+      throw error;
+    }
+
+    // Check if policy denied
+    const errorMessage = error instanceof Error ? error.message : '';
+    if (
+      errorMessage.includes('denied') ||
+      errorMessage.includes('unauthorized') ||
+      errorMessage.includes('not allowed')
+    ) {
+      throw new PolicyDeniedError(policyModule);
+    }
+
+    throw new DecryptionError(
+      undefined,
+      'Decryption failed',
+      error instanceof Error ? error : undefined
+    );
+  }
+}
+
+/**
+ * Decrypt using direct Seal decryption
+ */
+async function decryptDirect(
+  client: SealClient,
+  encryptedData: Uint8Array,
+  sessionKey: any,
+  txBytes: Uint8Array,
+  identity: string,
+  policyModule: string,
+  onProgress?: ProgressCallback
+): Promise<DecryptionResult> {
+  onProgress?.(50, 'Decrypting with Seal...');
+
+  const decryptedBytes = await client.decrypt({
+    data: encryptedData,
+    sessionKey,
+    txBytes,
+  });
+
+  onProgress?.(100, 'Decryption complete');
+
+  const metadata: DecryptionMetadata = {
+    decryptedAt: Date.now(),
+    identity,
+    policyModule,
+  };
+
+  return {
+    data: decryptedBytes,
+    metadata,
+  };
+}
+
+/**
+ * Decrypt using envelope decryption (Seal + AES)
+ */
+async function decryptEnvelope(
+  client: SealClient,
+  envelope: Uint8Array,
+  sessionKey: any,
+  txBytes: Uint8Array,
+  identity: string,
+  policyModule: string,
+  onProgress?: ProgressCallback
+): Promise<DecryptionResult> {
+  onProgress?.(40, 'Extracting sealed key...');
+
+  // Extract sealed key from envelope
+  const { sealedKey, encryptedFile } = parseEnvelope(envelope);
+
+  onProgress?.(50, 'Decrypting AES key...');
+
+  // Decrypt the sealed AES key
+  const aesKey = await client.decrypt({
+    data: sealedKey,
+    sessionKey,
+    txBytes,
+  });
+
+  onProgress?.(70, 'Decrypting file with AES...');
+
+  // Decrypt the file with AES
+  const decryptedFile = await decryptWithAES(encryptedFile, aesKey);
+
+  onProgress?.(100, 'Envelope decryption complete');
+
+  const metadata: DecryptionMetadata = {
+    decryptedAt: Date.now(),
+    identity,
+    policyModule,
+  };
+
+  return {
+    data: decryptedFile,
+    metadata,
+  };
+}
+
+/**
+ * Check if data uses envelope encryption
+ * Envelope format: [4 bytes key length][sealed key][encrypted file]
+ */
+function checkIfEnvelope(data: Uint8Array): boolean {
+  if (data.length < 4) return false;
+
+  // Read key length from first 4 bytes
+  const view = new DataView(data.buffer, data.byteOffset, 4);
+  const keyLength = view.getUint32(0, true); // little-endian
+
+  // Sanity check: sealed key should be 200-400 bytes
+  return keyLength >= 200 && keyLength <= 400 && data.length > keyLength + 4;
+}
+
+/**
+ * Parse envelope format to extract sealed key and encrypted file
+ */
+function parseEnvelope(envelope: Uint8Array): {
+  sealedKey: Uint8Array;
+  encryptedFile: Uint8Array;
+} {
+  // Read key length
+  const view = new DataView(envelope.buffer, envelope.byteOffset, 4);
+  const keyLength = view.getUint32(0, true);
+
+  // Extract sealed key
+  const sealedKey = envelope.slice(4, 4 + keyLength);
+
+  // Extract encrypted file
+  const encryptedFile = envelope.slice(4 + keyLength);
+
+  return { sealedKey, encryptedFile };
+}
+
+/**
+ * Decrypt data with AES-256-GCM
+ */
+async function decryptWithAES(
+  data: Uint8Array,
+  key: Uint8Array
+): Promise<Uint8Array> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    throw new DecryptionError(
+      undefined,
+      'Web Crypto API not available. This feature requires a browser environment or Node.js with webcrypto support.'
+    );
+  }
+
+  try {
+    // Extract IV (first 12 bytes)
+    const iv = data.slice(0, 12);
+    const ciphertext = data.slice(12);
+
+    // Import AES key
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+
+    // Decrypt data
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv,
+      },
+      cryptoKey,
+      ciphertext
+    );
+
+    return new Uint8Array(decrypted);
+  } catch (error) {
+    throw new DecryptionError(
+      undefined,
+      'AES decryption failed',
+      error instanceof Error ? error : undefined
+    );
+  }
+}
+
+/**
+ * Batch decrypt multiple files with key caching
+ * More efficient than individual decrypts for multiple files
+ */
+export async function batchDecrypt(
+  client: SealClient,
+  items: BatchDecryptItem[],
+  options: BatchDecryptOptions,
+  onProgress?: ProgressCallback
+): Promise<Map<string, DecryptionResult>> {
+  const {
+    sessionKey,
+    packageId,
+    policyModule,
+    suiClient,
+    batchSize = DEFAULT_BATCH_SIZE,
+  } = options;
+
+  const results = new Map<string, DecryptionResult>();
+  const actualBatchSize = Math.min(batchSize, MAX_BATCH_SIZE);
+
+  onProgress?.(0, `Decrypting ${items.length} files...`);
+
+  // Ensure session is valid
+  ensureSessionValid(sessionKey);
+
+  // Process in batches
+  for (let i = 0; i < items.length; i += actualBatchSize) {
+    const batch = items.slice(i, i + actualBatchSize);
+    const batchNum = Math.floor(i / actualBatchSize) + 1;
+    const totalBatches = Math.ceil(items.length / actualBatchSize);
+
+    onProgress?.(
+      (i / items.length) * 50,
+      `Pre-fetching keys for batch ${batchNum}/${totalBatches}...`
+    );
+
+    // Build batch transaction
+    const tx = new Transaction();
+    batch.forEach((item) => {
+      tx.moveCall({
+        target: `${packageId}::${policyModule}::seal_approve`,
+        arguments: [tx.pure.vector('u8', hexToBytes(item.identity))],
+      });
+    });
+
+    const txBytes = await tx.build({ client: suiClient });
+
+    // Pre-fetch decryption keys for batch
+    await client.fetchKeys({
+      identities: batch.map((item) => ({
+        packageId: parsePackageId(packageId),
+        id: hexToBytes(item.identity),
+      })),
+      sessionKey,
+      txBytes,
+    });
+
+    onProgress?.(
+      50 + (i / items.length) * 50,
+      `Decrypting batch ${batchNum}/${totalBatches}...`
+    );
+
+    // Decrypt files using cached keys
+    for (const item of batch) {
+      try {
+        const result = await decryptFile(
+          client,
+          item.encryptedData,
+          {
+            sessionKey,
+            packageId,
+            identity: item.identity,
+            policyModule,
+            suiClient,
+          }
+        );
+
+        results.set(item.identity, result);
+      } catch (error) {
+        console.error(`Failed to decrypt ${item.identity}:`, error);
+        // Continue with other files
+      }
+    }
+  }
+
+  onProgress?.(100, `Decrypted ${results.size}/${items.length} files`);
+
+  return results;
+}
+
+/**
+ * Decrypt metadata (JSON)
+ */
+export async function decryptMetadata<T = any>(
+  client: SealClient,
+  encryptedData: Uint8Array,
+  options: DecryptFileOptions
+): Promise<T> {
+  const result = await decryptFile(client, encryptedData, options);
+
+  // Decode JSON
+  const json = new TextDecoder().decode(result.data);
+  return JSON.parse(json);
+}
+
+/**
+ * Decrypt with retry logic (for flaky network)
+ */
+export async function decryptFileWithRetry(
+  client: SealClient,
+  encryptedData: Uint8Array,
+  options: DecryptFileOptions,
+  maxRetries: number = 3,
+  onProgress?: ProgressCallback
+): Promise<DecryptionResult> {
+  return retry(
+    () => decryptFile(client, encryptedData, options, onProgress),
+    { maxAttempts: maxRetries }
+  );
+}

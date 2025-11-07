@@ -22,7 +22,7 @@ module sonar::sonar_token {
         let (treasury_cap, metadata) = coin::create_currency(
             witness,
             9,                                                      // decimals
-            b"SONAR",                                               // symbol
+            b"SNR",                                                 // symbol
             b"SONAR Token",                                         // name
             b"Sound Oracle Network for Audio Rewards",            // description
             option::none(),                                         // icon url (optional)
@@ -45,7 +45,7 @@ module sonar::sonar_token {
         let (treasury_cap, metadata) = coin::create_currency(
             witness,
             9,
-            b"SONAR",
+            b"SNR",
             b"SONAR Token",
             b"Sound Oracle Network for Audio Rewards",
             option::none(),

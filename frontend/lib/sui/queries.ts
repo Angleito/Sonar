@@ -2,15 +2,16 @@ import { gql } from 'graphql-request';
 
 /**
  * Fragment for common dataset fields
+ * Targets Object type and extracts Move object data via asMoveObject
  */
 export const DATASET_FRAGMENT = gql`
-  fragment DatasetFields on MoveObject {
+  fragment DatasetFields on Object {
     address
     version
     digest
     owner {
       ... on AddressOwner {
-        owner {
+        address {
           address
         }
       }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FreeSoundRepository } from '@/lib/data/freesound-repository';
+import { SuiRepository } from '@/lib/data/sui-repository';
 import { SonarBackground } from '@/components/animations/SonarBackground';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -10,7 +10,7 @@ import { SonarButton } from '@/components/ui/SonarButton';
 import { TestnetDatasetCard } from '@/components/marketplace/TestnetDatasetCard';
 
 export default function MarketplaceTestnetPage() {
-  const repository = useMemo(() => new FreeSoundRepository({ bundleSize: 10 }), []);
+  const repository = useMemo(() => new SuiRepository(), []);
   const [searchQuery, setSearchQuery] = useState('');
 
   const {
@@ -21,9 +21,9 @@ export default function MarketplaceTestnetPage() {
     refetch,
   } = useQuery({
     queryKey: ['marketplace-testnet', 'datasets'],
-    queryFn: () => repository.getDatasets(),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
+    queryFn: () => repository.getDatasets({ pendingOnly: true }), // Show only pending (unreviewed) submissions
+    staleTime: 10_000, // Refresh more frequently for voting updates
+    refetchOnWindowFocus: true,
   });
 
   const filtered = useMemo(() => {

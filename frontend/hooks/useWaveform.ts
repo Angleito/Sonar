@@ -46,12 +46,12 @@ export function useWaveform(options: UseWaveformOptions): UseWaveformResult {
         document.body.appendChild(containerRef.current);
       }
 
-      // Create Wavesurfer instance
+      // Create Wavesurfer instance with error handling
       const ws = WaveSurfer.create({
         container: containerRef.current,
         url: src,
         backend: 'WebAudio',
-        autoplay: autoplay,
+        autoplay: false, // Never autoplay - will manually start after user gesture
         height: 0, // No visual renderer
         barWidth: 0,
         ...(fetchOptions && { fetchParams: fetchOptions }),
@@ -109,17 +109,28 @@ export function useWaveform(options: UseWaveformOptions): UseWaveformResult {
         }
       });
 
-      // Handle errors
+      // Handle errors with detailed logging
       ws.on('error', (error: Error) => {
+        // Skip logging AbortError - these are expected during cleanup
+        if (error.name === 'AbortError') {
+          if (mountedRef.current) {
+            setIsLoading(false);
+          }
+          return;
+        }
+
         console.error('Wavesurfer error:', error);
+        console.error('Failed to load audio from:', src);
         if (mountedRef.current) {
           setIsLoading(false);
+          // Don't set wavesurfer on error - allows retry
         }
       });
 
       setWavesurfer(ws);
     } catch (error) {
       console.error('Failed to initialize Wavesurfer:', error);
+      console.error('Source URL:', src);
       setIsLoading(false);
     }
   }, [src, sliceCount, autoplay, fetchOptions, isLoading, peaks, wavesurfer]);
@@ -136,25 +147,45 @@ export function useWaveform(options: UseWaveformOptions): UseWaveformResult {
   /**
    * Playback control methods
    */
-  const play = useCallback(() => {
+  const play = useCallback(async () => {
     if (!wavesurfer) {
       // Auto-load on first play
       load();
       return;
     }
-    wavesurfer.play();
+
+    try {
+      // Resume AudioContext after user gesture to satisfy browser autoplay policy
+      if (wavesurfer.getMediaElement?.()?.context?.state === 'suspended') {
+        await wavesurfer.getMediaElement().context.resume();
+      }
+
+      wavesurfer.play();
+    } catch (error) {
+      console.error('Failed to play audio:', error);
+    }
   }, [wavesurfer, load]);
 
   const pause = useCallback(() => {
     wavesurfer?.pause();
   }, [wavesurfer]);
 
-  const playPause = useCallback(() => {
+  const playPause = useCallback(async () => {
     if (!wavesurfer) {
       load();
       return;
     }
-    wavesurfer.playPause();
+
+    try {
+      // Resume AudioContext after user gesture to satisfy browser autoplay policy
+      if (wavesurfer.getMediaElement?.()?.context?.state === 'suspended') {
+        await wavesurfer.getMediaElement().context.resume();
+      }
+
+      wavesurfer.playPause();
+    } catch (error) {
+      console.error('Failed to toggle playback:', error);
+    }
   }, [wavesurfer, load]);
 
   const seek = useCallback(
@@ -175,7 +206,16 @@ export function useWaveform(options: UseWaveformOptions): UseWaveformResult {
 
   const destroy = useCallback(() => {
     if (wavesurfer) {
-      wavesurfer.destroy();
+      try {
+        wavesurfer.destroy();
+      } catch (error) {
+        // Swallow AbortError and DOMException during cleanup
+        if (error instanceof DOMException || (error as Error).name === 'AbortError') {
+          // Silent cleanup - these are expected during component unmount
+        } else {
+          console.error('Error destroying wavesurfer:', error);
+        }
+      }
       setWavesurfer(null);
     }
 

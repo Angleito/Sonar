@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { Upload } from 'lucide-react';
 import { useDatasets, useFeaturedDatasets } from '@/hooks/useDatasets';
 import { DatasetCard } from '@/components/marketplace/DatasetCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { SonarBackground } from '@/components/animations/SonarBackground';
+import { UploadWizard } from '@/components/upload/UploadWizard';
 import type { DatasetFilter } from '@/types/blockchain';
 
 /**
@@ -18,6 +20,7 @@ export default function MarketplacePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [minQuality, setMinQuality] = useState<number>(0);
+  const [showUploadWizard, setShowUploadWizard] = useState(false);
 
   // Fetch datasets with current filter
   const { data: datasets, isLoading, error } = useDatasets(filter);
@@ -64,12 +67,24 @@ export default function MarketplacePage() {
       <div className="relative z-10 container mx-auto px-6 py-12">
         {/* Page Header */}
         <div className="max-w-6xl mx-auto mb-12">
-          <h1 className="text-5xl font-mono tracking-radar text-sonar-highlight mb-4">
-            Marketplace
-          </h1>
-          <p className="text-xl text-sonar-highlight-bright/80">
-            Browse high-quality conversational audio datasets
-          </p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-5xl font-mono tracking-radar text-sonar-highlight mb-4">
+                Marketplace
+              </h1>
+              <p className="text-xl text-sonar-highlight-bright/80">
+                Browse high-quality conversational audio datasets
+              </p>
+            </div>
+            <SonarButton
+              variant="primary"
+              onClick={() => setShowUploadWizard(true)}
+              className="flex items-center space-x-2"
+            >
+              <Upload className="w-5 h-5" />
+              <span>Upload Dataset</span>
+            </SonarButton>
+          </div>
         </div>
 
         {/* Featured Datasets */}
@@ -235,6 +250,12 @@ export default function MarketplacePage() {
           </div>
         </div>
       </div>
+
+      {/* Upload Wizard Modal */}
+      <UploadWizard
+        open={showUploadWizard}
+        onOpenChange={setShowUploadWizard}
+      />
     </main>
   );
 }

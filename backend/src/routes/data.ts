@@ -12,8 +12,15 @@ import {
   createDatasetAccessGrant,
   getDatasetAudioStream,
   getDatasetPreviewStream,
+  storeSealMetadata,
 } from '../services/dataset-service';
 import { isHttpError, toErrorResponse } from '../lib/errors';
+
+interface SealMetadataBody {
+  seal_policy_id: string;
+  backup_key: string;
+  blob_id: string;
+}
 
 /**
  * Register data access routes
@@ -58,6 +65,72 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
       } catch (error) {
         if (!isHttpError(error)) {
           request.log.error({ error, datasetId: request.params.id }, 'Access request failed');
+        }
+
+        const { statusCode, body } = toErrorResponse(error);
+        return reply.code(statusCode).send(body);
+      }
+    }
+  );
+
+  /**
+   * POST /api/datasets/:id/seal-metadata
+   * Store Seal encryption metadata for a dataset
+   * Called from frontend after successful blockchain publish
+   */
+  fastify.post<{ Params: { id: string }; Body: SealMetadataBody }>(
+    '/api/datasets/:id/seal-metadata',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        body: {
+          type: 'object',
+          properties: {
+            seal_policy_id: { type: 'string' },
+            backup_key: { type: 'string' },
+            blob_id: { type: 'string' },
+          },
+          required: ['seal_policy_id', 'backup_key', 'blob_id'],
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{ Params: { id: string }; Body: SealMetadataBody }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const datasetId = assertDatasetId(request.params.id);
+        const { seal_policy_id, backup_key, blob_id } = request.body;
+
+        // Validate base64 backup key
+        if (!backup_key || backup_key.length === 0) {
+          return reply.code(400).send({
+            error: 'INVALID_REQUEST',
+            message: 'backup_key is required and cannot be empty',
+          });
+        }
+
+        await storeSealMetadata({
+          datasetId,
+          seal_policy_id,
+          backup_key,
+          blob_id,
+          logger: request.log,
+        });
+
+        return reply.send({ success: true, datasetId });
+      } catch (error) {
+        if (!isHttpError(error)) {
+          request.log.error(
+            { error, datasetId: request.params.id },
+            'Failed to store seal metadata'
+          );
         }
 
         const { statusCode, body } = toErrorResponse(error);

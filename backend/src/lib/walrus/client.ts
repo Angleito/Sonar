@@ -1,74 +1,29 @@
 /**
- * Walrus client using Dreamlit's production SDK.
- * Built on DirectTransport, HealthMonitor, and RateLimiter for enterprise-grade
- * reliability with automatic failover, rate limiting, and connection management.
- * Optimized for large audio blob streaming with range request support.
+ * Walrus client using direct HTTP API calls
+ * Simple and reliable implementation for blob storage operations
  */
 
 import type { BlobMetadata } from '@sonar/shared';
-import {
-  DirectTransport,
-  HealthMonitor,
-  RateLimiter,
-  WalrusConnectionManager,
-} from '@dreamlit/walrus';
 import { logger } from '../logger';
 import { config } from '../config';
 
 // Get configuration from centralized config
 const MOCK_WALRUS = config.walrus.mockMode;
 
-// Normalize URLs for consistent endpoint handling
-const aggregatorBase = normalizeBaseUrl(config.walrus.aggregatorUrl);
-const publisherBase = normalizeBaseUrl(config.walrus.publisherUrl || config.walrus.aggregatorUrl);
+// Walrus endpoints
+const WALRUS_AGGREGATOR_URL = config.walrus.aggregatorUrl;
+const WALRUS_PUBLISHER_URL = config.walrus.publisherUrl || config.walrus.aggregatorUrl;
 
-// Production-ready rate limiting configuration
-// Aggregator: Higher limits for read operations (streaming, metadata)
-const aggregatorLimiter = new RateLimiter({
-  name: 'walrus-aggregator',
-  maxRPS: config.walrus.aggregator.maxRPS,
-  burst: config.walrus.aggregator.burst,
-  maxConcurrent: config.walrus.aggregator.maxConcurrent,
-});
-
-// Publisher: Conservative limits for write operations (upload)
-const publisherLimiter = new RateLimiter({
-  name: 'walrus-publisher',
-  maxRPS: config.walrus.publisher.maxRPS,
-  burst: config.walrus.publisher.burst,
-  maxConcurrent: config.walrus.publisher.maxConcurrent,
-});
-
-// Dreamlit DirectTransport: Production SDK transport layer with built-in failover
-const walrusTransport = new DirectTransport({
-  walrusAgg: aggregatorLimiter,
-  walrusPub: publisherLimiter,
-});
-
-// Connection manager: Tracks health and provides automatic failover
-const connectionManager = new WalrusConnectionManager();
-
-// Health monitor: Continuous health checking with automatic endpoint failover
-const healthMonitor = new HealthMonitor(
-  {
-    aggregator: { proxy: aggregatorBase, direct: aggregatorBase, proxyEnabled: false },
-    publisher: { proxy: publisherBase, direct: publisherBase, proxyEnabled: false },
-  },
-  walrusTransport,
-  connectionManager
-);
-
-// Initialize health monitoring on startup
-logger.info('Initializing Dreamlit Walrus SDK with health monitoring');
-healthMonitor.check().catch((error: unknown) => {
-  logger.warn({ error }, 'Initial Walrus health check failed (will retry automatically)');
-});
+logger.info({
+  aggregator: WALRUS_AGGREGATOR_URL,
+  publisher: WALRUS_PUBLISHER_URL
+}, 'Walrus client initialized');
 
 // Stream timeout configuration
 const STREAM_TIMEOUT_MS = config.walrus.aggregator.requestTimeout;
 
 /**
- * Fetch blob metadata from Walrus via the SDK transport layer.
+ * Fetch blob metadata from Walrus
  */
 export async function fetchBlobMetadata(blobId: string): Promise<BlobMetadata | null> {
   if (MOCK_WALRUS) {
@@ -151,47 +106,38 @@ export async function streamBlobFromWalrus(
     ? `${options.range.start}-${options.range.end ?? ''}`
     : 'full';
 
-  return aggregatorLimiter.schedule(
-    `walrus:stream:${blobId}:${rangeDescriptor}`,
-    async () => {
-      const requestUrl = new URL(`/v1/blobs/${blobId}`, `${aggregatorBase}/`).toString();
-      const headers: HeadersInit = {
-        Accept: 'audio/mpeg',
-      };
+  const requestUrl = `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`;
+  const headers: HeadersInit = {
+    Accept: 'audio/mpeg',
+  };
 
-      if (options?.range) {
-        const { start, end } = options.range;
-        headers['Range'] = `bytes=${start}${end !== undefined ? `-${end}` : '-'}`;
-      }
+  if (options?.range) {
+    const { start, end } = options.range;
+    headers['Range'] = `bytes=${start}${end !== undefined ? `-${end}` : '-'}`;
+  }
 
-      const { signal, dispose } = createTimeoutController(STREAM_TIMEOUT_MS);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
 
-      try {
-        const response = await fetch(requestUrl, { headers, signal });
+    const response = await fetch(requestUrl, { headers, signal: controller.signal });
 
-        if (!response.ok) {
-          const error = new Error(`Walrus error: ${response.status} ${response.statusText}`);
-          connectionManager.recordFailure(error);
-          logger.error({ blobId, status: response.status, range: options?.range }, 'Failed to stream blob from Walrus');
-          throw error;
-        }
+    clearTimeout(timeout);
 
-        connectionManager.recordSuccess();
-        dispose();
-        return response;
-      } catch (error) {
-        connectionManager.recordFailure(error instanceof Error ? error : undefined);
-        logger.error({ error, blobId, range: options?.range }, 'Stream failed');
-        dispose();
-        throw error;
-      }
-    },
-    { timeoutMs: STREAM_TIMEOUT_MS + 5_000 }
-  );
+    if (!response.ok) {
+      logger.error({ blobId, status: response.status, range: options?.range }, 'Failed to stream blob from Walrus');
+      throw new Error(`Walrus error: ${response.status} ${response.statusText}`);
+    }
+
+    return response;
+  } catch (error) {
+    logger.error({ error, blobId, range: options?.range }, 'Stream failed');
+    throw error;
+  }
 }
 
 /**
- * Check Walrus health using the SDK health monitor.
+ * Check Walrus health
  */
 export async function isWalrusAvailable(): Promise<boolean> {
   if (MOCK_WALRUS) {
@@ -199,47 +145,10 @@ export async function isWalrusAvailable(): Promise<boolean> {
   }
 
   try {
-    const status = await healthMonitor.check();
-    return status.aggregatorAvailable;
+    const response = await fetch(`${WALRUS_AGGREGATOR_URL}/v1/health`);
+    return response.ok;
   } catch (error) {
     logger.error({ error }, 'Walrus health check failed');
     return false;
   }
 }
-
-function normalizeBaseUrl(raw: string): string {
-  try {
-    const url = new URL(raw);
-    url.pathname = url.pathname.replace(/\/$/, '');
-    return url.toString().replace(/\/$/, '');
-  } catch (error) {
-    throw new Error(`Invalid Walrus URL provided: ${raw}`);
-  }
-}
-
-function createTimeoutController(timeoutMs: number): { signal?: AbortSignal; dispose: () => void } {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return { signal: undefined, dispose: () => undefined };
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const dispose = () => clearTimeout(timeoutId);
-  controller.signal.addEventListener('abort', dispose, { once: true });
-  return { signal: controller.signal, dispose };
-}
-
-/**
- * TODO: Add resumable download support for >500MB files
- *       - Implement ETag/If-Range headers
- *       - Store partial download state
- *       - Resume from last byte on reconnect
- *
- * TODO: Add download timeout (e.g., 30min for large files)
- *       - Configurable via DOWNLOAD_TIMEOUT_MS env var
- *       - Graceful cleanup on timeout
- *
- * TODO: Add chunked verification for large blobs
- *       - Stream through hash verification
- *       - Don't wait for full download to verify
- */

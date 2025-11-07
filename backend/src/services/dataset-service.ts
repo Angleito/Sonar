@@ -31,6 +31,15 @@ interface PreviewOptions {
   prismaClient?: PrismaClient;
 }
 
+interface StoreSealMetadataOptions {
+  datasetId: string;
+  seal_policy_id: string;
+  backup_key: string; // Base64-encoded backup key
+  blob_id: string;
+  logger: FastifyBaseLogger;
+  prismaClient?: PrismaClient;
+}
+
 type DatasetPrismaClient = Pick<
   PrismaClient,
   'dataset' | 'datasetBlob' | 'purchase' | 'accessLog'
@@ -138,10 +147,16 @@ export async function createDatasetAccessGrant({
 
   const downloadUrl = `/api/datasets/${datasetId}/stream`;
 
+  // Convert backup key Buffer to base64 string if available
+  const backup_key = blobs.backup_key
+    ? blobs.backup_key.toString('base64')
+    : undefined;
+
   return {
     seal_policy_id: dataset.seal_policy_id || '',
     download_url: downloadUrl,
     blob_id: blobs.full_blob_id,
+    backup_key,
     expires_at: Date.now() + 24 * 60 * 60 * 1000,
   };
 }
@@ -225,4 +240,49 @@ export async function getDatasetAudioStream({
     logger.error({ error, datasetId }, 'Failed to stream audio from Walrus');
     throw new HttpError(500, ErrorCode.WALRUS_ERROR, 'Failed to stream audio');
   }
+}
+
+/**
+ * Store Seal encryption metadata for a dataset
+ * Called after successful blockchain publish to link backup key to dataset
+ */
+export async function storeSealMetadata({
+  datasetId,
+  seal_policy_id,
+  backup_key,
+  blob_id,
+  logger,
+  prismaClient,
+}: StoreSealMetadataOptions): Promise<void> {
+  const prisma = getPrismaClient(prismaClient);
+
+  // Verify dataset exists
+  const dataset = await prisma.dataset.findUnique({
+    where: { id: datasetId },
+  });
+
+  if (!dataset) {
+    logger.warn({ datasetId }, 'Cannot store seal metadata: dataset not found');
+    throw new HttpError(404, ErrorCode.DATASET_NOT_FOUND, 'Dataset not found.');
+  }
+
+  // Convert base64 backup key to Buffer for storage
+  const backupKeyBuffer = Buffer.from(backup_key, 'base64');
+
+  // Update or create DatasetBlob with seal metadata
+  await prisma.datasetBlob.upsert({
+    where: { dataset_id: datasetId },
+    update: {
+      backup_key: backupKeyBuffer,
+      full_blob_id: blob_id,
+    },
+    create: {
+      dataset_id: datasetId,
+      backup_key: backupKeyBuffer,
+      full_blob_id: blob_id,
+      preview_blob_id: '', // Will be set separately if preview exists
+    },
+  });
+
+  logger.info({ datasetId, seal_policy_id }, 'Seal metadata stored successfully');
 }

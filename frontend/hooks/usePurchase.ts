@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useSignAndExecuteTransaction, useCurrentAccount } from '@mysten/dapp-kit';
+import { useSignAndExecuteTransaction, useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import type { Dataset } from '@/types/blockchain';
-import { PACKAGE_ID } from '@/lib/sui/client';
+import { MARKETPLACE_ID, PACKAGE_ID, SONAR_COIN_TYPE } from '@/lib/sui/client';
+import { collectCoinsForAmount, prepareCoinPayment } from '@/lib/sui/coin-utils';
 
 export interface PurchaseState {
   isPurchasing: boolean;
@@ -44,6 +45,7 @@ export interface UsePurchaseReturn {
 export function usePurchase(): UsePurchaseReturn {
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+  const suiClient = useSuiClient();
 
   const [state, setState] = useState<PurchaseState>({
     isPurchasing: false,
@@ -85,30 +87,48 @@ export function usePurchase(): UsePurchaseReturn {
     });
 
     try {
+      if (!MARKETPLACE_ID || MARKETPLACE_ID === '0x0') {
+        throw new Error('Marketplace ID is not configured. Set NEXT_PUBLIC_MARKETPLACE_ID.');
+      }
+
+      if (!PACKAGE_ID || PACKAGE_ID === '0x0') {
+        throw new Error('Package ID is not configured. Set NEXT_PUBLIC_PACKAGE_ID.');
+      }
+
+      if (SONAR_COIN_TYPE === '0x0::sonar::SONAR') {
+        throw new Error('SONAR coin type is not configured.');
+      }
+
+      const requiredAmount = dataset.price;
+
+      if (requiredAmount <= 0n) {
+        throw new Error('Invalid dataset price.');
+      }
+
+      const accountAddress = currentAccount.address;
+
+      const { coins, total } = await collectCoinsForAmount(
+        suiClient,
+        accountAddress,
+        SONAR_COIN_TYPE,
+        requiredAmount
+      );
+
+      if (total < requiredAmount) {
+        throw new Error('Insufficient SONAR balance. Use the kiosk flow to acquire SONAR first.');
+      }
+
       // Build transaction
       const tx = new Transaction();
 
-      // Get SONAR token object for payment
-      // Note: This is a placeholder - actual implementation will need to:
-      // 1. Query user's SONAR token balance
-      // 2. Split coins if needed
-      // 3. Pass correct coin object to Move function
+      const paymentCoin = prepareCoinPayment({
+        tx,
+        owner: accountAddress,
+        coins,
+        total,
+        required: requiredAmount,
+      });
 
-      // Call purchase_dataset Move function
-      // Placeholder: Replace with actual package ID and module
-      const packageId = PACKAGE_ID;
-
-      // Example Move call structure:
-      // tx.moveCall({
-      //   target: `${packageId}::marketplace::purchase_dataset`,
-      //   arguments: [
-      //     tx.object(dataset.id), // Dataset object ID
-      //     tx.pure.u64(dataset.price), // Price in SONAR (smallest units)
-      //   ],
-      // });
-
-      // For now, we'll create a simple placeholder transaction
-      // This demonstrates the transaction flow without deployed contracts
       tx.setGasBudget(10_000_000); // 0.01 SUI
 
       console.log('Purchase transaction built:', {
@@ -118,6 +138,15 @@ export function usePurchase(): UsePurchaseReturn {
       });
 
       // Sign and execute transaction
+      tx.moveCall({
+        target: `${PACKAGE_ID}::marketplace::purchase_dataset`,
+        arguments: [
+          tx.object(MARKETPLACE_ID),
+          tx.object(dataset.id),
+          paymentCoin,
+        ],
+      });
+
       const result = await signAndExecuteTransaction({
         transaction: tx,
       });

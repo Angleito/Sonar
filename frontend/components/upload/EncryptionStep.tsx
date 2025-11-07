@@ -1,0 +1,285 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Lock, Upload, Shield, CheckCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { AudioFile, EncryptionResult } from '@/lib/types/upload';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { useSealEncryption } from '@/hooks/useSeal';
+import { useWalrusUpload, generatePreviewBlob } from '@/hooks/useWalrusUpload';
+
+interface EncryptionStepProps {
+  audioFile: AudioFile;
+  onEncrypted: (result: EncryptionResult & { walrusBlobId: string; previewBlobId?: string }) => void;
+  onError: (error: string) => void;
+}
+
+type EncryptionStage = 'encrypting' | 'generating-preview' | 'uploading-walrus' | 'finalizing' | 'completed';
+
+/**
+ * EncryptionStep Component
+ * Handles client-side Seal encryption and Walrus upload
+ */
+export function EncryptionStep({
+  audioFile,
+  onEncrypted,
+  onError,
+}: EncryptionStepProps) {
+  const [stage, setStage] = useState<EncryptionStage>('encrypting');
+  const [progress, setProgress] = useState(0);
+
+  const { isReady, encrypt, error: sealError } = useSealEncryption();
+  const { uploadWithPreview } = useWalrusUpload();
+
+  useEffect(() => {
+    if (isReady) {
+      performEncryptionAndUpload();
+    }
+  }, [isReady]);
+
+  useEffect(() => {
+    if (sealError) {
+      onError(sealError);
+    }
+  }, [sealError]);
+
+  const performEncryptionAndUpload = async () => {
+    try {
+      // Stage 1: Encrypt audio with Mysten Seal
+      setStage('encrypting');
+      setProgress(0);
+
+      const encryptionResult = await encrypt(
+        audioFile.file,
+        {
+          accessPolicy: 'purchase', // Default to purchase policy
+        },
+        (progressPercent, statusMessage) => {
+          setProgress(progressPercent);
+          console.log(statusMessage);
+        }
+      );
+
+      setProgress(25);
+
+      // Stage 2: Generate preview blob (first 30 seconds, lower quality)
+      setStage('generating-preview');
+      setProgress(30);
+
+      const previewBlob = await generatePreviewBlob(audioFile);
+      setProgress(45);
+
+      // Stage 3: Upload to Walrus via Edge Function
+      setStage('uploading-walrus');
+      setProgress(50);
+
+      const walrusResult = await uploadWithPreview(encryptionResult, previewBlob);
+      setProgress(75);
+
+      // Stage 4: Finalize
+      setStage('finalizing');
+      setProgress(90);
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      setProgress(100);
+
+      const finalResult = {
+        encryptedBlob: new Blob([encryptionResult.encryptedData]), // Convert Uint8Array to Blob
+        seal_policy_id: encryptionResult.identity, // Seal identity becomes seal_policy_id
+        backupKey: encryptionResult.backupKey,
+        metadata: encryptionResult.metadata,
+        previewBlob,
+        walrusBlobId: walrusResult.blobId,
+        previewBlobId: walrusResult.previewBlobId,
+      };
+
+      setStage('completed');
+
+      // Small delay to show completion state
+      setTimeout(() => {
+        onEncrypted(finalResult);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Encryption or upload failed:', error);
+      onError(error instanceof Error ? error.message : 'Encryption or upload failed');
+    }
+  };
+
+  const stages: Array<{ key: EncryptionStage; label: string; icon: React.ReactNode }> = [
+    {
+      key: 'encrypting',
+      label: 'Encrypting with Mysten Seal',
+      icon: <Lock className="w-5 h-5" />,
+    },
+    {
+      key: 'generating-preview',
+      label: 'Generating Preview',
+      icon: <Shield className="w-5 h-5" />,
+    },
+    {
+      key: 'uploading-walrus',
+      label: 'Uploading to Walrus',
+      icon: <Upload className="w-5 h-5" />,
+    },
+    {
+      key: 'finalizing',
+      label: 'Finalizing',
+      icon: <CheckCircle className="w-5 h-5" />,
+    },
+  ];
+
+  const currentStageIndex = stages.findIndex((s) => s.key === stage);
+
+  return (
+    <div className="space-y-6">
+      {/* Progress Circle */}
+      <div className="flex flex-col items-center justify-center py-8">
+        <div className="relative w-48 h-48">
+          {/* Background Circle */}
+          <svg className="w-full h-full transform -rotate-90">
+            <circle
+              cx="96"
+              cy="96"
+              r="88"
+              stroke="currentColor"
+              strokeWidth="8"
+              fill="none"
+              className="text-sonar-blue/20"
+            />
+            {/* Progress Circle */}
+            <motion.circle
+              cx="96"
+              cy="96"
+              r="88"
+              stroke="currentColor"
+              strokeWidth="8"
+              fill="none"
+              strokeDasharray={552.92} // 2 * PI * 88
+              strokeDashoffset={552.92 * (1 - progress / 100)}
+              strokeLinecap="round"
+              className="text-sonar-signal"
+              initial={{ strokeDashoffset: 552.92 }}
+              animate={{ strokeDashoffset: 552.92 * (1 - progress / 100) }}
+              transition={{ duration: 0.5, ease: 'easeInOut' }}
+            />
+          </svg>
+
+          {/* Center Content */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <motion.div
+              key={stage}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="text-sonar-signal mb-2"
+            >
+              {stages[currentStageIndex]?.icon}
+            </motion.div>
+            <motion.div
+              key={`progress-${Math.floor(progress)}`}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-4xl font-mono font-bold text-sonar-highlight-bright"
+            >
+              {Math.round(progress)}%
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Current Stage Label */}
+        <motion.p
+          key={stage}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-6 text-lg font-mono text-sonar-highlight-bright"
+        >
+          {stages[currentStageIndex]?.label}
+        </motion.p>
+      </div>
+
+      {/* Stage List */}
+      <div className="space-y-3">
+        {stages.map((stageInfo, index) => {
+          const isCompleted = index < currentStageIndex;
+          const isCurrent = index === currentStageIndex;
+          const isPending = index > currentStageIndex;
+
+          return (
+            <motion.div
+              key={stageInfo.key}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <GlassCard
+                className={cn(
+                  'transition-all duration-300',
+                  isCurrent && 'bg-sonar-signal/10 border border-sonar-signal',
+                  isCompleted && 'opacity-70'
+                )}
+              >
+                <div className="flex items-center space-x-4">
+                  <div
+                    className={cn(
+                      'p-3 rounded-sonar transition-colors',
+                      isCompleted && 'bg-sonar-signal/20 text-sonar-signal',
+                      isCurrent && 'bg-sonar-signal/30 text-sonar-signal animate-pulse',
+                      isPending && 'bg-sonar-blue/10 text-sonar-blue/50'
+                    )}
+                  >
+                    {isCompleted ? (
+                      <CheckCircle className="w-5 h-5" />
+                    ) : (
+                      stageInfo.icon
+                    )}
+                  </div>
+
+                  <div className="flex-1">
+                    <p
+                      className={cn(
+                        'font-mono font-semibold',
+                        isCompleted && 'text-sonar-highlight/70',
+                        isCurrent && 'text-sonar-highlight-bright',
+                        isPending && 'text-sonar-highlight/50'
+                      )}
+                    >
+                      {stageInfo.label}
+                    </p>
+                  </div>
+
+                  {isCompleted && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="text-sonar-signal"
+                    >
+                      <CheckCircle className="w-6 h-6" />
+                    </motion.div>
+                  )}
+                </div>
+              </GlassCard>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Info Box */}
+      <GlassCard className="bg-sonar-blue/5">
+        <div className="flex items-start space-x-3">
+          <Shield className="w-5 h-5 text-sonar-blue mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-sonar-highlight/80 space-y-2">
+            <p className="font-mono font-semibold text-sonar-blue">
+              Secure Processing
+            </p>
+            <p>
+              Your audio is being encrypted client-side using Mysten Seal. The
+              encrypted data is then uploaded to Walrus decentralized storage.
+              Only you control the decryption keys.
+            </p>
+          </div>
+        </div>
+      </GlassCard>
+    </div>
+  );
+}

@@ -32,26 +32,39 @@ export interface DataRepository {
 
 /**
  * Parser helpers for transforming raw data to typed objects
+ * Maps AudioSubmission contract fields to Dataset interface
  */
 export function parseDataset(raw: any): Dataset {
+  // Handle both AudioSubmission contract fields and seed data
+  const creator = raw.uploader || raw.creator;
+  const price = raw.dataset_price !== undefined ? BigInt(raw.dataset_price) : BigInt(raw.price || 0);
+  const listed = raw.listed_for_sale !== undefined ? Boolean(raw.listed_for_sale) : Boolean(raw.listed);
+  const totalPurchases = raw.purchase_count !== undefined ? Number(raw.purchase_count) : Number(raw.total_purchases || 0);
+  const createdAt = raw.submitted_at_epoch !== undefined ? Number(raw.submitted_at_epoch) : Number(raw.created_at || 0);
+
+  // Status: 0=pending, 1=approved, 2=rejected
+  const verified = raw.status !== undefined ? raw.status === 1 : Boolean(raw.verified);
+
   return {
     id: raw.id || raw.address,
-    creator: raw.creator,
-    quality_score: Number(raw.quality_score),
-    price: BigInt(raw.price),
-    listed: Boolean(raw.listed),
-    duration_seconds: Number(raw.duration_seconds),
+    creator,
+    quality_score: Number(raw.quality_score || 0),
+    price,
+    listed,
+    duration_seconds: Number(raw.duration_seconds || 0),
     languages: raw.languages || [],
-    formats: raw.formats || [],
-    media_type: raw.media_type,
-    created_at: Number(raw.created_at),
-    title: raw.title || 'Untitled',
-    description: raw.description || '',
-    total_purchases: raw.total_purchases ? Number(raw.total_purchases) : 0,
-    sample_count: raw.sample_count ? Number(raw.sample_count) : 0,
+    formats: raw.formats || ['mp3'],
+    media_type: raw.media_type || 'audio',
+    created_at: createdAt,
+    title: raw.title || `Audio Dataset #${String(raw.id || '').slice(0, 8)}`,
+    description: raw.description || 'On-chain audio dataset with SEAL encryption',
+    total_purchases: totalPurchases,
+    sample_count: raw.sample_count ? Number(raw.sample_count) : 1,
     storage_size: raw.storage_size ? Number(raw.storage_size) : 0,
-    verified: Boolean(raw.verified),
-    updated_at: raw.updated_at ? Number(raw.updated_at) : Number(raw.created_at),
+    verified,
+    updated_at: raw.updated_at ? Number(raw.updated_at) : createdAt,
+    previewUrl: raw.previewUrl, // Direct preview URL (e.g., from Freesound)
+    voting_stats: raw.voting_stats, // Community voting data
   };
 }
 

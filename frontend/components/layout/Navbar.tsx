@@ -20,6 +20,7 @@ export function Navbar() {
   const navLinks = [
     { href: '/', label: 'Home' },
     { href: '/marketplace', label: 'Marketplace' },
+    { href: '/marketplace-testnet', label: 'Marketplace Testnet' },
     { href: '/stats', label: 'Economics' },
   ];
 
@@ -29,14 +30,14 @@ export function Navbar() {
         <div className="flex items-center justify-between h-18">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-3 group">
-            <div className="relative w-12 h-12">
+            <div className="relative w-12 h-8">
               {/* Subtle background glow */}
               <div className="absolute inset-0 bg-sonar-signal/10 blur-sm group-hover:bg-sonar-signal/20 transition-all" />
               <Image
                 src="/images/walrus-icon.png"
                 alt="SONAR Protocol"
                 width={48}
-                height={48}
+                height={32}
                 className="relative z-10 opacity-90 group-hover:opacity-100 transition-all drop-shadow-lg"
                 priority
               />

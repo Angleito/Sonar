@@ -9,4 +9,4 @@ Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fram
 WAL = { local = "../wal" }
 
 [addresses]
-walrus = "0x0"
+walrus = "0x795ddbc26b8cfff2551f45e198b87fc19473f2df50f995376b924ac80e56f88b"

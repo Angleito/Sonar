@@ -63,15 +63,17 @@ export function RadarScanTarget({
             {/* Background glow that intensifies on scan */}
             <div className="absolute inset-0 bg-sonar-signal/20 blur-xl animate-sonar-glow" />
 
-            {/* The actual image */}
-            <Image
-              src={src}
-              alt={alt}
-              width={size * 0.8}
-              height={size * 0.8}
-              className="relative z-10 drop-shadow-2xl"
-              priority
-            />
+            {/* The actual image with maintained aspect ratio */}
+            <div className="relative w-full h-full">
+              <Image
+                src={src}
+                alt={alt}
+                fill
+                sizes={`(max-width: 768px) ${Math.round(size * 0.8)}px, ${size}px`}
+                className="object-contain relative z-10 drop-shadow-2xl"
+                priority
+              />
+            </div>
           </div>
         </div>
 

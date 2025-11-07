@@ -33,8 +33,13 @@ export function DatasetCard({ dataset, onPurchase }: DatasetCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Get preview URL from backend (public endpoint, no auth required)
-  const previewUrl = getPreviewUrl(dataset.id);
+  // Use direct preview URL if available (e.g., from Freesound), otherwise use backend endpoint
+  const previewUrl = dataset.previewUrl || getPreviewUrl(dataset.id);
+
+  // Debug: Log preview URL source
+  if (typeof window !== 'undefined' && !dataset.previewUrl) {
+    console.log(`Dataset ${dataset.id} missing previewUrl, using backend fallback`);
+  }
 
   // Initialize waveform hook for audio preview
   const waveform = useWaveform({

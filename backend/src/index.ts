@@ -119,17 +119,30 @@ async function start(): Promise<void> {
     }
   });
 
+  // Initialize Redis (optional - only if REDIS_URL is set)
+  if (process.env.REDIS_URL) {
+    try {
+      const { redis } = await import('./lib/cache/redis-client');
+      await redis.init();
+      fastify.log.info('Redis cache initialized');
+    } catch (error) {
+      fastify.log.warn('Redis initialization failed - continuing without cache:', error);
+    }
+  }
+
   // Register routes
   const { registerAuthRoutes } = await import('./routes/auth');
   const { registerDataRoutes } = await import('./routes/data');
   const { registerKioskRoutes } = await import('./routes/kiosk');
   const { registerMonitoringRoutes } = await import('./routes/monitoring');
+  const { registerCacheRoutes } = await import('./routes/cache');
   const { syncKioskSnapshotToDatabase } = await import('./lib/kiosk/state');
 
   await registerAuthRoutes(fastify);
   await registerDataRoutes(fastify);
   await registerKioskRoutes(fastify);
   await registerMonitoringRoutes(fastify);
+  await registerCacheRoutes(fastify);
 
   fastify.log.info('Routes registered');
 
@@ -175,7 +188,8 @@ async function start(): Promise<void> {
     await fastify.listen({ port, host });
     fastify.log.info(`Server running at http://${host}:${port}`);
   } catch (error) {
-    fastify.log.error(error);
+    fastify.log.error(error, 'Failed to bind to port');
+    console.error('Port binding error:', error);
     process.exit(1);
   }
 }
@@ -195,5 +209,6 @@ process.on('SIGINT', async () => {
 
 start().catch((error) => {
   logger.error(error, 'Failed to start server');
+  console.error('Startup error details:', error);
   process.exit(1);
 });

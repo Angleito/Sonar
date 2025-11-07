@@ -5,9 +5,9 @@ import { useSignAndExecuteTransaction, useCurrentAccount } from '@mysten/dapp-ki
 import { Transaction } from '@mysten/sui/transactions';
 import { toast } from 'sonner';
 
-// Updated 2025-11-06: Package upgraded with voting functionality
+// Updated 2025-11-06: Using old package temporarily for testing
 const SONAR_PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ||
-  '0x300b8182eea252a00d5ff19568126cc20c0bdd19c7e25f6c6953363393d344e6';
+  '0x6e4a4e65ba20ead7cea8d6ef0ed4d5639afdfff259c6943f02cbce927b21ae89';
 
 export interface UseVotingOptions {
   submissionId: string;

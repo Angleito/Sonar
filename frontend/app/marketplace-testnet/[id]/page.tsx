@@ -12,14 +12,14 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AudioPlayer } from '@/components/dataset/AudioPlayer';
 import { VoteButtonDetailed } from '@/components/marketplace/VoteButton';
 import { BundleClipsList } from '@/components/marketplace/BundleClipsList';
-import { FreeSoundRepository } from '@/lib/data/freesound-repository';
+import { SuiRepository } from '@/lib/data/sui-repository';
 import { formatNumber } from '@/lib/utils';
 
 export default function MarketplaceTestnetDetailPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Array.isArray(params.id) ? params.id[0] : params.id;
 
-  const repository = useMemo(() => new FreeSoundRepository({ bundleSize: 10 }), []);
+  const repository = useMemo(() => new SuiRepository(), []);
 
   const {
     data: dataset,

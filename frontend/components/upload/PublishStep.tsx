@@ -1,0 +1,298 @@
+'use client';
+
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Coins, Wallet, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
+import { cn } from '@/lib/utils';
+import {
+  WalrusUploadResult,
+  DatasetMetadata,
+  VerificationResult,
+  PublishResult,
+} from '@/lib/types/upload';
+import { SonarButton } from '@/components/ui/SonarButton';
+import { GlassCard } from '@/components/ui/GlassCard';
+
+/**
+ * Convert Uint8Array to base64 string (browser-safe)
+ */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+interface PublishStepProps {
+  walrusUpload: WalrusUploadResult;
+  metadata: DatasetMetadata;
+  verification: VerificationResult;
+  onPublished: (result: PublishResult) => void;
+  onError: (error: string) => void;
+}
+
+const PACKAGE_ID = process.env.NEXT_PUBLIC_SUI_PACKAGE_ID || '';
+const MARKETPLACE_ID = process.env.NEXT_PUBLIC_SUI_MARKETPLACE_ID || '';
+const BURN_FEE_PERCENTAGE = 0.00001; // 0.001% of circulating supply
+
+/**
+ * PublishStep Component
+ * Handles blockchain submission with burn fee
+ */
+export function PublishStep({
+  walrusUpload,
+  metadata,
+  verification,
+  onPublished,
+  onError,
+}: PublishStepProps) {
+  const account = useCurrentAccount();
+  const { mutate: signAndExecute, isPending } = useSignAndExecuteTransaction();
+  const [publishState, setPublishState] = useState<'idle' | 'signing' | 'broadcasting' | 'confirming'>('idle');
+
+  const handlePublish = async () => {
+    if (!account) {
+      onError('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      setPublishState('signing');
+
+      // Build transaction
+      const tx = new Transaction();
+
+      // TODO: Calculate actual burn fee based on circulating supply
+      const burnFee = 1000000; // 0.001 SONAR (placeholder)
+
+      // Call submit_audio function
+      tx.moveCall({
+        target: `${PACKAGE_ID}::marketplace::submit_audio`,
+        arguments: [
+          tx.object(MARKETPLACE_ID),
+          tx.pure.string(walrusUpload.blobId),
+          tx.pure.string(walrusUpload.seal_policy_id), // Seal policy ID for decryption
+          tx.pure.option('vector<u8>', null), // preview_blob_hash (optional)
+          tx.pure.u64(3600), // duration_seconds (placeholder - should come from audioFile)
+          tx.splitCoins(tx.gas, [burnFee])[0], // burn_fee
+        ],
+      });
+
+      setPublishState('broadcasting');
+
+      // Sign and execute
+      signAndExecute(
+        {
+          transaction: tx,
+        },
+        {
+          onSuccess: async (result) => {
+            setPublishState('confirming');
+
+            // TODO: Poll for confirmation
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+
+            // Extract dataset ID from transaction events
+            // TODO: Parse actual dataset ID from transaction events
+            const datasetId = `dataset_${Date.now()}`;
+
+            // Store seal metadata in backend for decryption
+            try {
+              const backupKeyBase64 = uint8ArrayToBase64(walrusUpload.backupKey);
+
+              const metadataResponse = await fetch(`/api/datasets/${datasetId}/seal-metadata`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  seal_policy_id: walrusUpload.seal_policy_id,
+                  backup_key: backupKeyBase64,
+                  blob_id: walrusUpload.blobId,
+                }),
+              });
+
+              if (!metadataResponse.ok) {
+                const error = await metadataResponse.json();
+                console.error('Failed to store seal metadata:', error);
+                // Don't fail the entire publish - user can still use the dataset
+                // but decryption might require manual backup key entry
+              }
+            } catch (error) {
+              console.error('Error storing seal metadata:', error);
+              // Continue with publish - metadata storage is non-critical
+            }
+
+            const publishResult: PublishResult = {
+              txDigest: result.digest,
+              datasetId,
+              confirmed: true,
+            };
+
+            onPublished(publishResult);
+          },
+          onError: (error) => {
+            console.error('Transaction failed:', error);
+            setPublishState('idle');
+            onError(
+              error.message || 'Failed to publish dataset to blockchain'
+            );
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Publish error:', error);
+      setPublishState('idle');
+      onError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to publish dataset'
+      );
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Wallet Connection Check */}
+      {!account ? (
+        <GlassCard className="bg-sonar-coral/10 border border-sonar-coral">
+          <div className="flex items-center space-x-4">
+            <Wallet className="w-8 h-8 text-sonar-coral" />
+            <div>
+              <h3 className="text-lg font-mono font-bold text-sonar-coral">
+                Wallet Not Connected
+              </h3>
+              <p className="text-sm text-sonar-highlight/70 mt-1">
+                Please connect your Sui wallet to publish your dataset to the
+                blockchain.
+              </p>
+            </div>
+          </div>
+        </GlassCard>
+      ) : (
+        <>
+          {/* Transaction Summary */}
+          <GlassCard>
+            <h3 className="text-lg font-mono font-bold text-sonar-highlight-bright mb-4">
+              Publication Summary
+            </h3>
+
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-sonar-highlight/70">Dataset Title:</span>
+                <span className="text-sonar-highlight-bright font-mono">
+                  {metadata.title}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-sonar-highlight/70">Languages:</span>
+                <span className="text-sonar-highlight-bright font-mono">
+                  {metadata.languages.join(', ')}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-sonar-highlight/70">Walrus Blob ID:</span>
+                <span className="text-sonar-signal font-mono text-xs truncate max-w-xs">
+                  {walrusUpload.blobId}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-sonar-highlight/70">Seal Policy ID:</span>
+                <span className="text-sonar-signal font-mono text-xs truncate max-w-xs">
+                  {walrusUpload.seal_policy_id}
+                </span>
+              </div>
+
+              {verification.qualityScore && (
+                <div className="flex justify-between">
+                  <span className="text-sonar-highlight/70">Quality Score:</span>
+                  <span className="text-sonar-signal font-mono">
+                    {Math.round(verification.qualityScore * 100)}%
+                  </span>
+                </div>
+              )}
+            </div>
+          </GlassCard>
+
+          {/* Burn Fee Info */}
+          <GlassCard className="bg-sonar-blue/5">
+            <div className="flex items-start space-x-4">
+              <Coins className="w-6 h-6 text-sonar-blue mt-0.5" />
+              <div className="flex-1">
+                <h4 className="font-mono font-semibold text-sonar-blue mb-2">
+                  Burn Fee Required
+                </h4>
+                <p className="text-sm text-sonar-highlight/80 mb-3">
+                  A small burn fee of <span className="text-sonar-signal font-mono">0.001 SONAR</span> is required to publish your dataset. This helps maintain the protocol's tokenomics.
+                </p>
+                <div className="p-3 rounded-sonar bg-sonar-abyss/30">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-sonar-highlight/70">
+                      Estimated Fee:
+                    </span>
+                    <span className="font-mono font-bold text-sonar-signal">
+                      0.001 SONAR
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* Publish Button */}
+          <div className="flex flex-col items-center space-y-4">
+            {publishState === 'idle' && (
+              <SonarButton
+                variant="primary"
+                onClick={handlePublish}
+                disabled={isPending}
+                className="w-full"
+              >
+                Publish to Blockchain
+              </SonarButton>
+            )}
+
+            {(publishState === 'signing' || publishState === 'broadcasting' || publishState === 'confirming') && (
+              <GlassCard className="w-full bg-sonar-signal/10 border border-sonar-signal">
+                <div className="flex items-center space-x-4">
+                  <Loader2 className="w-6 h-6 text-sonar-signal animate-spin" />
+                  <div className="flex-1">
+                    <p className="font-mono font-semibold text-sonar-highlight-bright">
+                      {publishState === 'signing' && 'Waiting for wallet signature...'}
+                      {publishState === 'broadcasting' && 'Broadcasting transaction...'}
+                      {publishState === 'confirming' && 'Confirming on blockchain...'}
+                    </p>
+                    <p className="text-xs text-sonar-highlight/70 mt-1">
+                      Please do not close this window
+                    </p>
+                  </div>
+                </div>
+              </GlassCard>
+            )}
+          </div>
+
+          {/* Info Box */}
+          <GlassCard className="bg-sonar-signal/5">
+            <div className="text-sm text-sonar-highlight/80 space-y-2">
+              <p className="font-mono font-semibold text-sonar-signal">
+                What happens next?
+              </p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>Your dataset will be published to the Sui blockchain</li>
+                <li>Buyers can discover and purchase access</li>
+                <li>Revenue will be sent directly to your wallet</li>
+                <li>You maintain full ownership and control</li>
+              </ul>
+            </div>
+          </GlassCard>
+        </>
+      )}
+    </div>
+  );
+}
