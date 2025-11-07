@@ -1,13 +1,9 @@
 # =============================================================================
 # Railway Configuration for SONAR SEAL Key Server
 # =============================================================================
-
-[build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
+# Railway will auto-detect the Dockerfile in the root directory
 
 [deploy]
-startCommand = "/app/start.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
