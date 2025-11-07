@@ -1,0 +1,22 @@
+# Environment files with actual secrets
+.env
+
+# Generated config with real values
+key-server-config.yaml
+
+# Key files
+*.key
+*.seed
+*.pem
+
+# Secrets directory
+secrets/
+
+# Local testing
+seal/
+
+# Build artifacts
+target/
+
+# OS files
+.DS_Store

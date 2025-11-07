@@ -1,0 +1,194 @@
+#!/bin/bash
+# =============================================================================
+# SONAR SEAL Key Server Setup Script
+# =============================================================================
+# This script helps set up the key server for local testing and deployment
+# Run with: ./setup.sh
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║       🔐 SONAR SEAL Key Server Setup                     ║${NC}"
+echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# Check if running from railway directory
+if [ ! -f "key-server-config.yaml.example" ]; then
+    echo -e "${RED}❌ Error: Must run from railway/ directory${NC}"
+    echo -e "${YELLOW}   cd railway && ./setup.sh${NC}"
+    exit 1
+fi
+
+# Check prerequisites
+echo -e "${BLUE}📋 Checking prerequisites...${NC}"
+
+# Check if Rust is installed
+if ! command -v cargo &> /dev/null; then
+    echo -e "${RED}❌ Rust/Cargo not found${NC}"
+    echo -e "${YELLOW}   Install from: https://rustup.rs${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Rust/Cargo found${NC}"
+
+# Check if Sui CLI is installed
+if ! command -v sui &> /dev/null; then
+    echo -e "${YELLOW}⚠️  Sui CLI not found (needed for on-chain registration)${NC}"
+    echo -e "${YELLOW}   Install from: https://sui.io/install${NC}"
+fi
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 1: Clone SEAL Repository${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Check if SEAL repo exists
+if [ -d "seal" ]; then
+    echo -e "${YELLOW}⚠️  SEAL repository already exists${NC}"
+    read -p "   Remove and re-clone? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}🗑️  Removing old SEAL repository...${NC}"
+        rm -rf seal
+    else
+        echo -e "${GREEN}✅ Using existing SEAL repository${NC}"
+    fi
+fi
+
+if [ ! -d "seal" ]; then
+    echo -e "${BLUE}📥 Cloning SEAL repository...${NC}"
+    git clone https://github.com/MystenLabs/seal.git
+    echo -e "${GREEN}✅ SEAL repository cloned${NC}"
+fi
+
+cd seal
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 2: Build seal-cli${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${BLUE}🔨 Building seal-cli (this may take a few minutes)...${NC}"
+cargo build --bin seal-cli --release
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Failed to build seal-cli${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ seal-cli built successfully${NC}"
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 3: Generate Master Seed${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${YELLOW}⚠️  IMPORTANT: Save this seed securely!${NC}"
+echo -e "${YELLOW}   This is your root secret - anyone with this can derive all keys${NC}"
+echo ""
+
+echo -e "${GREEN}🎲 Generating master seed...${NC}"
+echo ""
+
+MASTER_SEED=$(./target/release/seal-cli gen-seed)
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}Master Seed (SAVE THIS):${NC}"
+echo -e "${GREEN}${MASTER_SEED}${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+cd ..
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 4: Create Local Environment File${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+if [ -f ".env" ]; then
+    echo -e "${YELLOW}⚠️  .env file already exists${NC}"
+    read -p "   Overwrite? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}⚠️  Keeping existing .env${NC}"
+    else
+        echo -e "${BLUE}📝 Creating .env file...${NC}"
+        cat > .env << EOF
+# SEAL Key Server Environment Variables
+# Generated by setup.sh on $(date)
+
+# Master seed (generated above)
+MASTER_KEY=${MASTER_SEED}
+
+# Key server object ID (fill in after on-chain registration)
+KEY_SERVER_OBJECT_ID=0xYOUR_OBJECT_ID_HERE
+
+# Config file path
+CONFIG_PATH=/app/config/key-server-config.yaml
+EOF
+        echo -e "${GREEN}✅ .env file created${NC}"
+    fi
+else
+    echo -e "${BLUE}📝 Creating .env file...${NC}"
+    cat > .env << EOF
+# SEAL Key Server Environment Variables
+# Generated by setup.sh on $(date)
+
+# Master seed (generated above)
+MASTER_KEY=${MASTER_SEED}
+
+# Key server object ID (fill in after on-chain registration)
+KEY_SERVER_OBJECT_ID=0xYOUR_OBJECT_ID_HERE
+
+# Config file path
+CONFIG_PATH=/app/config/key-server-config.yaml
+EOF
+    echo -e "${GREEN}✅ .env file created${NC}"
+fi
+
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}✅ Setup Complete!${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${YELLOW}📋 Next Steps:${NC}"
+echo ""
+echo -e "1. ${GREEN}Get derived public key${NC} (run key server locally):"
+echo -e "   ${BLUE}cd seal${NC}"
+echo -e "   ${BLUE}MASTER_KEY=${MASTER_SEED} \\${NC}"
+echo -e "   ${BLUE}  CONFIG_PATH=../key-server-config.yaml.example \\${NC}"
+echo -e "   ${BLUE}  cargo run --bin key-server${NC}"
+echo -e "   ${YELLOW}→ Copy the derived public key from logs${NC}"
+echo ""
+echo -e "2. ${GREEN}Register on Sui testnet:${NC}"
+echo -e "   ${BLUE}sui client call \\${NC}"
+echo -e "   ${BLUE}  --package 0x599d35684e6c8bcbe8c34ad75f7273e2abedc8067d192d05c71bb5d63a4cbd5f \\${NC}"
+echo -e "   ${BLUE}  --module key_server \\${NC}"
+echo -e "   ${BLUE}  --function create_and_transfer_v1 \\${NC}"
+echo -e "   ${BLUE}  --args <PUBLIC_KEY> <YOUR_ADDRESS> \\${NC}"
+echo -e "   ${BLUE}  --gas-budget 10000000${NC}"
+echo -e "   ${YELLOW}→ Copy the object ID from transaction output${NC}"
+echo ""
+echo -e "3. ${GREEN}Update .env with object ID${NC}"
+echo ""
+echo -e "4. ${GREEN}Deploy to Railway:${NC}"
+echo -e "   ${YELLOW}→ Set MASTER_KEY and KEY_SERVER_OBJECT_ID in Railway secrets${NC}"
+echo -e "   ${YELLOW}→ Deploy from GitHub${NC}"
+echo ""
+echo -e "5. ${GREEN}Update SONAR frontend:${NC}"
+echo -e "   ${BLUE}cd ../frontend${NC}"
+echo -e "   ${BLUE}echo 'NEXT_PUBLIC_SEAL_KEY_SERVERS=https://your-url.railway.app' >> .env${NC}"
+echo ""
+
+echo -e "${BLUE}📚 Full instructions: See README.md${NC}"
+echo ""

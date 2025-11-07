@@ -1,0 +1,46 @@
+# =============================================================================
+# SEAL Key Server Configuration Template
+# =============================================================================
+# This template is public (committed to git) and shows the structure.
+# Actual secrets are replaced at runtime from Railway environment variables.
+#
+# For deployment:
+# 1. Set MASTER_KEY in Railway secrets
+# 2. Set KEY_SERVER_OBJECT_ID in Railway secrets
+# 3. Dockerfile substitutes REPLACE_KEY_SERVER_OBJECT_ID at startup
+
+# Sui network configuration
+network: Testnet
+
+# Server mode: Permissioned (only SONAR package can request keys)
+server_mode: !Permissioned
+  client_configs:
+    # SONAR Marketplace Configuration
+    - name: "SONAR Marketplace"
+
+      # Key server object ID (registered on-chain)
+      # THIS VALUE IS REPLACED AT RUNTIME from Railway secret: KEY_SERVER_OBJECT_ID
+      key_server_object_id: "REPLACE_KEY_SERVER_OBJECT_ID"
+
+      # Allowed package IDs (only these can request derived keys)
+      package_ids:
+        # SONAR package ID (upgraded testnet version - Nov 2025)
+        - "0x7375bdf0438c9430cb230a5ac0a278d1cba97dd991a2635a29055ce75825a7f4"
+
+      # Client master key derivation
+      # Uses MASTER_KEY environment variable with derivation_index 0
+      client_master_key: !Derived
+        derivation_index: 0
+
+# Optional: Prometheus metrics endpoint
+# Exposed on port 9184 for monitoring
+metrics_host_port: 9184
+
+# Optional: SDK version requirement (enforce minimum client version)
+# sdk_version_requirement: ">=1.0.0"
+
+# Optional: Advanced timing parameters (defaults are usually fine)
+# checkpoint_update_interval: 30s
+# rgp_update_interval: 30s
+# allowed_staleness: 60s
+# session_key_ttl_max: 3600s
