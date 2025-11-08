@@ -22,7 +22,6 @@
     "seed": "bun prisma/seed.ts"
   },
   "dependencies": {
-    "@dreamlit/walrus": "github:Vjust/dreamlit-walrus-sdk#main",
     "@mysten/sui.js": "^0.54.1",
     "@prisma/client": "^5.8.0",
     "@sonar/shared": "workspace:*",
