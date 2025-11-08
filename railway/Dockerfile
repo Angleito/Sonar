@@ -1,8 +1,9 @@
 # =============================================================================
 # SONAR SEAL Key Server Dockerfile
 # =============================================================================
-# Auto-generates new key material on each deployment for security
-# Check deployment logs for MASTER_KEY and PUBLIC_KEY
+# Auto-generates key material ONLY on first deployment (when MASTER_KEY not set)
+# For production: Set MASTER_KEY and KEY_SERVER_OBJECT_ID env vars in Railway
+# To reset keys: Delete MASTER_KEY env var and redeploy
 
 # Build stage
 FROM rust:1.83-bullseye AS builder
@@ -45,23 +46,22 @@ set -e\n\
 \n\
 echo ""\n\
 echo "========================================================================"\n\
-echo "🔐 SONAR SEAL Key Server - Auto Key Generation"\n\
+echo "🔐 SONAR SEAL Key Server"\n\
 echo "========================================================================"\n\
 echo ""\n\
 \n\
-# Save Railway env MASTER_KEY if provided\n\
-RAILWAY_MASTER_KEY="${MASTER_KEY:-}"\n\
-\n\
-# Generate new master seed on each deployment\n\
-echo "📝 Generating new master seed..."\n\
-MASTER_KEY_RAW=$(/opt/key-server/bin/seal-cli gen-seed)\n\
-GENERATED_MASTER_KEY=$(echo "$MASTER_KEY_RAW" | grep -oP "0x[a-f0-9]+" || echo "$MASTER_KEY_RAW")\n\
-\n\
-echo "✅ Master seed generated"\n\
-echo ""\n\
-\n\
-# Create temporary config for key derivation\n\
-cat > /app/config/derive-config.yaml <<EOF\n\
+# Check if MASTER_KEY is already set\n\
+if [ -z "${MASTER_KEY:-}" ]; then\n\
+  # Setup mode: Generate new keys\n\
+  echo "📝 Generating new master seed..."\n\
+  MASTER_KEY_RAW=$(/opt/key-server/bin/seal-cli gen-seed)\n\
+  GENERATED_MASTER_KEY=$(echo "$MASTER_KEY_RAW" | grep -oP "0x[a-f0-9]+" || echo "$MASTER_KEY_RAW")\n\
+  \n\
+  echo "✅ Master seed generated"\n\
+  echo ""\n\
+  \n\
+  # Create temporary config for key derivation\n\
+  cat > /app/config/derive-config.yaml <<EOF\n\
 network: Mainnet\n\
 server_mode: !Permissioned\n\
   client_configs:\n\
@@ -82,66 +82,70 @@ master_key:\n\
 sui:\n\
   url: "https://fullnode.mainnet.sui.io"\n\
 EOF\n\
-\n\
-echo "📝 Deriving public key..."\n\
-CONFIG_PATH=/app/config/derive-config.yaml timeout 5 /opt/key-server/bin/key-server 2>&1 | tee /tmp/derive.log || true\n\
-PUBLIC_KEY=$(grep -oP "Derived public key for index 0: \\K0x[a-f0-9]+" /tmp/derive.log || echo "DERIVATION_FAILED")\n\
-\n\
-echo ""\n\
-echo "========================================================================"\n\
-echo "🎉 KEY MATERIAL GENERATED"\n\
-echo "========================================================================"\n\
-echo ""\n\
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
-echo "📋 MASTER_KEY (save to Railway secrets):"\n\
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
-echo ""\n\
-echo "$GENERATED_MASTER_KEY"\n\
-echo ""\n\
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
-echo "📋 PUBLIC_KEY (for on-chain registration):"\n\
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
-echo ""\n\
-echo "${PUBLIC_KEY}"\n\
-echo ""\n\
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
-echo ""\n\
-echo "📝 Register on-chain:"\n\
-echo ""\n\
-echo "sui client call \\\\"\n\
-echo "  --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\\\"\n\
-echo "  --module key_server \\\\"\n\
-echo "  --function create_and_transfer_v1 \\\\"\n\
-echo "  --args ${PUBLIC_KEY} <YOUR_ADDRESS> \\\\"\n\
-echo "  --gas-budget 100000000"\n\
-echo ""\n\
-echo "Then set Railway env vars and redeploy:"\n\
-echo "  MASTER_KEY=$GENERATED_MASTER_KEY"\n\
-echo "  KEY_SERVER_OBJECT_ID=<object ID from transaction>"\n\
-echo ""\n\
-echo "========================================================================"\n\
-echo ""\n\
-\n\
-# Check if we have env vars to run production mode\n\
-if [ -z "$KEY_SERVER_OBJECT_ID" ] || [ "$KEY_SERVER_OBJECT_ID" = "" ]; then\n\
-  echo "⚠️  KEY_SERVER_OBJECT_ID not set - staying in setup mode"\n\
+  \n\
+  echo "📝 Deriving public key..."\n\
+  CONFIG_PATH=/app/config/derive-config.yaml timeout 5 /opt/key-server/bin/key-server 2>&1 | tee /tmp/derive.log || true\n\
+  PUBLIC_KEY=$(grep -oP "Derived public key for index 0: \\K0x[a-f0-9]+" /tmp/derive.log || echo "DERIVATION_FAILED")\n\
+  \n\
+  echo ""\n\
+  echo "========================================================================"\n\
+  echo "🎉 KEY MATERIAL GENERATED"\n\
+  echo "========================================================================"\n\
+  echo ""\n\
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
+  echo "📋 MASTER_KEY (save to Railway secrets):"\n\
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
+  echo ""\n\
+  echo "$GENERATED_MASTER_KEY"\n\
+  echo ""\n\
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
+  echo "📋 PUBLIC_KEY (for on-chain registration):"\n\
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
+  echo ""\n\
+  echo "${PUBLIC_KEY}"\n\
+  echo ""\n\
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"\n\
+  echo ""\n\
+  echo "📝 Register on-chain:"\n\
+  echo ""\n\
+  echo "sui client call \\\\"\n\
+  echo "  --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\\\"\n\
+  echo "  --module key_server \\\\"\n\
+  echo "  --function create_and_transfer_v1 \\\\"\n\
+  echo "  --args ${PUBLIC_KEY} <YOUR_ADDRESS> \\\\"\n\
+  echo "  --gas-budget 100000000"\n\
+  echo ""\n\
+  echo "Then set Railway env vars and redeploy:"\n\
+  echo "  MASTER_KEY=$GENERATED_MASTER_KEY"\n\
+  echo "  KEY_SERVER_OBJECT_ID=<object ID from transaction>"\n\
+  echo ""\n\
+  echo "========================================================================"\n\
+  echo ""\n\
+  \n\
+  echo "⚠️  MASTER_KEY not set - staying in setup mode"\n\
   echo ""\n\
   echo "Keeping container alive for 90 seconds so you can copy the keys..."\n\
   sleep 90\n\
   exit 0\n\
 fi\n\
 \n\
-# Production mode - use provided env vars\n\
-echo "✅ Using provided MASTER_KEY and KEY_SERVER_OBJECT_ID"\n\
+# Production mode: MASTER_KEY is set\n\
+echo "✅ Using existing MASTER_KEY from Railway"\n\
+\n\
+# Check if we have KEY_SERVER_OBJECT_ID\n\
+if [ -z "$KEY_SERVER_OBJECT_ID" ] || [ "$KEY_SERVER_OBJECT_ID" = "" ]; then\n\
+  echo "❌ ERROR: MASTER_KEY is set but KEY_SERVER_OBJECT_ID is missing"\n\
+  echo ""\n\
+  echo "Please set KEY_SERVER_OBJECT_ID in Railway and redeploy"\n\
+  exit 1\n\
+fi\n\
+\n\
 echo "🚀 Starting production key server..."\n\
 echo ""\n\
 \n\
-# Use Railway MASTER_KEY for production\n\
-FINAL_MASTER_KEY="${RAILWAY_MASTER_KEY}"\n\
-\n\
 # Generate production config\n\
 sed "s|0x0000000000000000000000000000000000000000000000000000000000000000|${KEY_SERVER_OBJECT_ID}|g" /app/config/template.yaml | \\\n\
-sed "s|master_seed:.*|master_seed: \\"${FINAL_MASTER_KEY}\\"|g" > /app/config/key-server-config.yaml\n\
+sed "s|master_seed:.*|master_seed: \\"${MASTER_KEY}\\"|g" > /app/config/key-server-config.yaml\n\
 \n\
 export CONFIG_PATH=/app/config/key-server-config.yaml\n\
 exec /opt/key-server/bin/key-server\n\
