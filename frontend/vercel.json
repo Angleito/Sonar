@@ -1,7 +1,7 @@
 {
   "framework": "nextjs",
-  "installCommand": "bun install",
-  "buildCommand": "bun run build",
+  "installCommand": "cd .. && bun install",
+  "buildCommand": "cd .. && bun run build:packages && cd frontend && bun run build",
   "devCommand": "bun run dev",
   "outputDirectory": ".next",
   "functions": {
