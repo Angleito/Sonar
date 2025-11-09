@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Coins, Wallet, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { cn } from '@/lib/utils';
 import {
@@ -50,6 +50,7 @@ export function PublishStep({
   onError,
 }: PublishStepProps) {
   const account = useCurrentAccount();
+  const suiClient = useSuiClient();
   const { mutate: signAndExecute, isPending } = useSignAndExecuteTransaction();
   const [publishState, setPublishState] = useState<'idle' | 'signing' | 'broadcasting' | 'confirming'>('idle');
 
@@ -118,24 +119,39 @@ export function PublishStep({
           onSuccess: async (result) => {
             setPublishState('confirming');
 
-            // Extract dataset ID from transaction result
-            // Look for the created AudioSubmission object in objectChanges
+            // Fetch full transaction details to get objectChanges
             let datasetId: string | null = null;
 
-            if (result.objectChanges) {
-              for (const change of result.objectChanges) {
-                if (change.type === 'created' &&
-                    change.objectType &&
-                    change.objectType.includes('::marketplace::AudioSubmission')) {
-                  datasetId = change.objectId;
-                  break;
+            try {
+              const txDetails = await suiClient.getTransactionBlock({
+                digest: result.digest,
+                options: {
+                  showObjectChanges: true,
+                  showEffects: true,
+                },
+              });
+
+              // Extract dataset ID from objectChanges
+              if (txDetails.objectChanges) {
+                for (const change of txDetails.objectChanges) {
+                  if (change.type === 'created' &&
+                      change.objectType &&
+                      change.objectType.includes('::marketplace::AudioSubmission')) {
+                    datasetId = change.objectId;
+                    break;
+                  }
                 }
               }
-            }
 
-            if (!datasetId) {
-              console.error('Failed to extract dataset ID from transaction result', result);
-              onError('Failed to extract dataset ID from blockchain transaction. Please try again.');
+              if (!datasetId) {
+                console.error('Failed to extract dataset ID from transaction', txDetails);
+                onError('Failed to extract dataset ID from blockchain transaction. Please try again.');
+                setPublishState('idle');
+                return;
+              }
+            } catch (error) {
+              console.error('Failed to fetch transaction details:', error);
+              onError('Failed to fetch transaction details. Please try again.');
               setPublishState('idle');
               return;
             }
