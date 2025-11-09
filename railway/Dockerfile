@@ -143,9 +143,20 @@ fi\n\
 echo "🚀 Starting production key server..."\n\
 echo ""\n\
 \n\
-# Generate production config\n\
-sed "s|0x0000000000000000000000000000000000000000000000000000000000000000|${KEY_SERVER_OBJECT_ID}|g" /app/config/template.yaml | \\\n\
-sed "s|master_seed:.*|master_seed: \\"${MASTER_KEY}\\"|g" > /app/config/key-server-config.yaml\n\
+# Strip any trailing newlines from environment variables\n\
+CLEAN_KEY_SERVER_ID=$(echo -n "${KEY_SERVER_OBJECT_ID}" | tr -d "\\n\\r")\n\
+CLEAN_MASTER_KEY=$(echo -n "${MASTER_KEY}" | tr -d "\\n\\r")\n\
+\n\
+echo "📝 Generating config with:"\n\
+echo "   Key Server Object ID: ${CLEAN_KEY_SERVER_ID}"\n\
+echo ""\n\
+\n\
+# Generate production config with cleaned values\n\
+sed "s|0x0000000000000000000000000000000000000000000000000000000000000000|${CLEAN_KEY_SERVER_ID}|g" /app/config/template.yaml | \\\n\
+sed "s|master_seed:.*|master_seed: \\"${CLEAN_MASTER_KEY}\\"|g" > /app/config/key-server-config.yaml\n\
+\n\
+echo "✅ Config generated at /app/config/key-server-config.yaml"\n\
+echo ""\n\
 \n\
 export CONFIG_PATH=/app/config/key-server-config.yaml\n\
 exec /opt/key-server/bin/key-server\n\
