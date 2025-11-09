@@ -4,6 +4,7 @@
 # Auto-generates key material ONLY on first deployment (when MASTER_KEY not set)
 # For production: Set MASTER_KEY and KEY_SERVER_OBJECT_ID env vars in Railway
 # To reset keys: Delete MASTER_KEY env var and redeploy
+# Last updated: 2025-11-09 - Package ID whitelist updated to 0xdff609...
 
 # Build stage
 FROM rust:1.83-bullseye AS builder
