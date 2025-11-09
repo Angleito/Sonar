@@ -13,13 +13,12 @@ import {
   getDatasetAudioStream,
   getDatasetPreviewStream,
   storeSealMetadata,
+  type FileSealMetadata,
 } from '../services/dataset-service';
 import { isHttpError, toErrorResponse } from '../lib/errors';
 
 interface SealMetadataBody {
-  seal_policy_id: string;
-  backup_key: string;
-  blob_id: string;
+  files: FileSealMetadata[];
 }
 
 /**
@@ -75,7 +74,7 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
 
   /**
    * POST /api/datasets/:id/seal-metadata
-   * Store Seal encryption metadata for a dataset
+   * Store Seal encryption metadata for a dataset (supports multi-file)
    * Called from frontend after successful blockchain publish
    */
   fastify.post<{ Params: { id: string }; Body: SealMetadataBody }>(
@@ -92,11 +91,23 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
         body: {
           type: 'object',
           properties: {
-            seal_policy_id: { type: 'string' },
-            backup_key: { type: 'string' },
-            blob_id: { type: 'string' },
+            files: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  file_index: { type: 'number' },
+                  seal_policy_id: { type: 'string' },
+                  backup_key: { type: 'string' },
+                  blob_id: { type: 'string' },
+                  preview_blob_id: { type: 'string' },
+                  duration_seconds: { type: 'number' },
+                },
+                required: ['file_index', 'seal_policy_id', 'backup_key', 'blob_id', 'duration_seconds'],
+              },
+            },
           },
-          required: ['seal_policy_id', 'backup_key', 'blob_id'],
+          required: ['files'],
         },
       },
     },
@@ -106,25 +117,33 @@ export async function registerDataRoutes(fastify: FastifyInstance): Promise<void
     ) => {
       try {
         const datasetId = assertDatasetId(request.params.id);
-        const { seal_policy_id, backup_key, blob_id } = request.body;
+        const { files } = request.body;
 
-        // Validate base64 backup key
-        if (!backup_key || backup_key.length === 0) {
+        // Validate files array
+        if (!files || files.length === 0) {
           return reply.code(400).send({
             error: 'INVALID_REQUEST',
-            message: 'backup_key is required and cannot be empty',
+            message: 'files array is required and cannot be empty',
           });
+        }
+
+        // Validate each file's backup_key
+        for (const file of files) {
+          if (!file.backup_key || file.backup_key.length === 0) {
+            return reply.code(400).send({
+              error: 'INVALID_REQUEST',
+              message: `backup_key is required for file at index ${file.file_index}`,
+            });
+          }
         }
 
         await storeSealMetadata({
           datasetId,
-          seal_policy_id,
-          backup_key,
-          blob_id,
+          files,
           logger: request.log,
         });
 
-        return reply.send({ success: true, datasetId });
+        return reply.send({ success: true, datasetId, fileCount: files.length });
       } catch (error) {
         if (!isHttpError(error)) {
           request.log.error(

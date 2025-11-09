@@ -190,12 +190,14 @@ export function useSeal() {
       setError(null);
 
       try {
+        const resolvedPackageId = PACKAGE_ID !== '0x0' ? PACKAGE_ID : undefined;
+
         const result = await encryptFile(
           sealClient,
           data,
           {
-            // packageId is only needed for decryption, not encryption
             accessPolicy: 'purchase',
+            packageId: resolvedPackageId,
             ...options,
           },
           onProgress

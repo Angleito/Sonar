@@ -113,32 +113,73 @@ export function PublishStep({
       signAndExecute(
         {
           transaction: tx,
+          options: {
+            showEffects: true,
+            showEvents: true,
+            showObjectChanges: true,
+          },
         },
         {
           onSuccess: async (result) => {
             setPublishState('confirming');
 
-            // TODO: Poll for confirmation
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            // Extract dataset ID from transaction result
+            // Look for the created AudioSubmission object in objectChanges
+            let datasetId: string | null = null;
 
-            // Extract dataset ID from transaction events
-            // TODO: Parse actual dataset ID from transaction events
-            const datasetId = `dataset_${Date.now()}`;
+            if (result.objectChanges) {
+              for (const change of result.objectChanges) {
+                if (change.type === 'created' &&
+                    change.objectType &&
+                    change.objectType.includes('::marketplace::AudioSubmission')) {
+                  datasetId = change.objectId;
+                  break;
+                }
+              }
+            }
+
+            if (!datasetId) {
+              console.error('Failed to extract dataset ID from transaction result', result);
+              console.error('Make sure showObjectChanges is enabled in transaction options');
+              onError('Failed to extract dataset ID from blockchain transaction. Please try again.');
+              setPublishState('idle');
+              return;
+            }
 
             // Store seal metadata in backend for decryption
+            // SECURITY: backup_key is currently base64-encoded but not encrypted
+            // TODO: Implement backup key encryption with user's public key before persistence
+            // This requires:
+            // 1. Derive/obtain user's public key from wallet
+            // 2. Encrypt backup_key with user's public key
+            // 3. Only user can decrypt their backup keys for recovery
+            // This maintains the recovery property while keeping keys secure
             try {
-              const backupKeyBase64 = uint8ArrayToBase64(walrusUpload.backupKey);
+              // Prepare file metadata for all files
+              const files = walrusUpload.files && walrusUpload.files.length > 0
+                ? walrusUpload.files.map(file => ({
+                    file_index: file.file_index || 0,
+                    seal_policy_id: file.seal_policy_id,
+                    backup_key: uint8ArrayToBase64(file.backupKey),
+                    blob_id: file.blobId,
+                    preview_blob_id: file.previewBlobId,
+                    duration_seconds: Math.floor(file.duration),
+                  }))
+                : [{
+                    file_index: 0,
+                    seal_policy_id: walrusUpload.seal_policy_id,
+                    backup_key: uint8ArrayToBase64(walrusUpload.backupKey),
+                    blob_id: walrusUpload.blobId,
+                    preview_blob_id: walrusUpload.previewBlobId,
+                    duration_seconds: 3600, // Placeholder for single-file backwards compat
+                  }];
 
               const metadataResponse = await fetch(`/api/datasets/${datasetId}/seal-metadata`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                  seal_policy_id: walrusUpload.seal_policy_id,
-                  backup_key: backupKeyBase64,
-                  blob_id: walrusUpload.blobId,
-                }),
+                body: JSON.stringify({ files }),
               });
 
               if (!metadataResponse.ok) {

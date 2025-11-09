@@ -13,15 +13,17 @@ const WALRUS_AGGREGATOR_URL =
 
 /**
  * Edge Function: Walrus Upload Proxy
- * Streams encrypted audio blob to Walrus aggregator and stores metadata
+ * Streams encrypted audio blob to Walrus aggregator
  *
  * POST /api/edge/walrus/upload
  * Body: FormData with:
  *   - file: encrypted blob
  *   - seal_policy_id: Seal identity for decryption
- *   - backup_key: Base64-encoded backup key
  *   - epochs: (optional) Number of epochs to store (default: Walrus default)
  * Returns: { blobId: string, certifiedEpoch: number }
+ *
+ * SECURITY: backup_key is intentionally NOT accepted here - it must stay client-side
+ * until encrypted for backend persistence after dataset is published on-chain
  */
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +31,6 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file');
     const sealPolicyId = formData.get('seal_policy_id');
-    const backupKey = formData.get('backup_key');
     const epochsParam = formData.get('epochs');
 
     if (!file || !(file instanceof Blob)) {
@@ -39,9 +40,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!sealPolicyId || !backupKey) {
+    if (!sealPolicyId) {
       return NextResponse.json(
-        { error: 'Missing seal_policy_id or backup_key' },
+        { error: 'Missing seal_policy_id' },
         { status: 400 }
       );
     }
@@ -103,18 +104,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store metadata in backend (non-blocking - return success even if this fails)
-    // Note: This will be called after dataset creation on-chain
-    // For now, we just return the blobId and metadata to the client
-    // The client will store it when calling publish
-
+    // Return blobId and metadata to client
+    // Client will store seal_policy_id and backup_key after on-chain publish
     return NextResponse.json({
       blobId,
       certifiedEpoch,
       fileSize: file.size,
       seal_policy_id: sealPolicyId,
-      // Note: We don't return backup_key for security - it's stored client-side
-      // until the dataset is published and linked to a dataset ID
     });
   } catch (error) {
     console.error('Walrus upload error:', error);

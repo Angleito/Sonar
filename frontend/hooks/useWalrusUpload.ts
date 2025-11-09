@@ -3,19 +3,8 @@ import { useMutation } from '@tanstack/react-query';
 import type { AudioFile, WalrusUploadResult, EncryptionResult } from '@/lib/types/upload';
 
 /**
- * Convert Uint8Array to base64 string (browser-safe)
- */
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-/**
  * Hook for uploading encrypted audio to Walrus via Edge Function
- * Handles client-side Seal encryption and streaming upload
+ * Handles streaming upload of encrypted blobs
  */
 
 interface UseWalrusUploadOptions {
@@ -29,6 +18,7 @@ export function useWalrusUpload(options?: UseWalrusUploadOptions) {
 
   /**
    * Upload main audio blob (expects pre-encrypted data)
+   * Note: backupKey is kept client-side and never sent to Edge handler
    */
   const uploadMutation = useMutation({
     mutationFn: async ({
@@ -43,11 +33,10 @@ export function useWalrusUpload(options?: UseWalrusUploadOptions) {
       setUploadProgress(0);
 
       // Create FormData with blob and metadata
+      // SECURITY: backupKey is intentionally NOT included here - it stays client-side
       const formData = new FormData();
       formData.append('file', encryptedBlob, 'encrypted-audio.bin');
       formData.append('seal_policy_id', seal_policy_id);
-      // Convert Uint8Array backup key to base64 for transmission (browser-safe)
-      formData.append('backup_key', uint8ArrayToBase64(backupKey));
 
       // Upload to Edge Function
       const response = await fetch('/api/edge/walrus/upload', {
@@ -67,7 +56,7 @@ export function useWalrusUpload(options?: UseWalrusUploadOptions) {
       return {
         blobId: result.blobId,
         seal_policy_id,
-        backupKey,
+        backupKey, // Returned to caller but never sent to server
         previewBlobId: undefined, // Will be uploaded separately
       };
     },

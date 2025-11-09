@@ -31,11 +31,18 @@ interface PreviewOptions {
   prismaClient?: PrismaClient;
 }
 
+export interface FileSealMetadata {
+  file_index: number;
+  seal_policy_id: string;
+  backup_key: string; // Base64-encoded backup key (TODO: should be encrypted with user's public key)
+  blob_id: string;
+  preview_blob_id?: string;
+  duration_seconds: number;
+}
+
 interface StoreSealMetadataOptions {
   datasetId: string;
-  seal_policy_id: string;
-  backup_key: string; // Base64-encoded backup key
-  blob_id: string;
+  files: FileSealMetadata[];
   logger: FastifyBaseLogger;
   prismaClient?: PrismaClient;
 }
@@ -244,13 +251,12 @@ export async function getDatasetAudioStream({
 
 /**
  * Store Seal encryption metadata for a dataset
- * Called after successful blockchain publish to link backup key to dataset
+ * Called after successful blockchain publish to link backup keys to dataset
+ * Supports multi-file datasets
  */
 export async function storeSealMetadata({
   datasetId,
-  seal_policy_id,
-  backup_key,
-  blob_id,
+  files,
   logger,
   prismaClient,
 }: StoreSealMetadataOptions): Promise<void> {
@@ -266,23 +272,53 @@ export async function storeSealMetadata({
     throw new HttpError(404, ErrorCode.DATASET_NOT_FOUND, 'Dataset not found.');
   }
 
-  // Convert base64 backup key to Buffer for storage
-  const backupKeyBuffer = Buffer.from(backup_key, 'base64');
+  // Store metadata for each file
+  // SECURITY NOTE: backup_key is currently stored base64-encoded but not encrypted
+  // TODO: Implement proper encryption:
+  // - Client encrypts backup_key with user's public key before sending
+  // - Only the user can decrypt for recovery purposes
+  // - This maintains recovery property while securing at-rest storage
+  for (const fileMetadata of files) {
+    const backupKeyBuffer = Buffer.from(fileMetadata.backup_key, 'base64');
 
-  // Update or create DatasetBlob with seal metadata
-  await prisma.datasetBlob.upsert({
-    where: { dataset_id: datasetId },
-    update: {
-      backup_key: backupKeyBuffer,
-      full_blob_id: blob_id,
-    },
-    create: {
-      dataset_id: datasetId,
-      backup_key: backupKeyBuffer,
-      full_blob_id: blob_id,
-      preview_blob_id: '', // Will be set separately if preview exists
-    },
-  });
+    await prisma.datasetBlob.upsert({
+      where: {
+        dataset_id_file_index: {
+          dataset_id: datasetId,
+          file_index: fileMetadata.file_index,
+        },
+      },
+      update: {
+        backup_key: backupKeyBuffer,
+        full_blob_id: fileMetadata.blob_id,
+        preview_blob_id: fileMetadata.preview_blob_id || '',
+        seal_policy_id: fileMetadata.seal_policy_id,
+        duration_seconds: fileMetadata.duration_seconds,
+      },
+      create: {
+        dataset_id: datasetId,
+        file_index: fileMetadata.file_index,
+        backup_key: backupKeyBuffer,
+        full_blob_id: fileMetadata.blob_id,
+        preview_blob_id: fileMetadata.preview_blob_id || '',
+        seal_policy_id: fileMetadata.seal_policy_id,
+        duration_seconds: fileMetadata.duration_seconds,
+      },
+    });
+  }
 
-  logger.info({ datasetId, seal_policy_id }, 'Seal metadata stored successfully');
+  // Update Dataset table with first file's seal_policy_id for backwards compatibility
+  if (files.length > 0) {
+    await prisma.dataset.update({
+      where: { id: datasetId },
+      data: {
+        seal_policy_id: files[0].seal_policy_id,
+      },
+    });
+  }
+
+  logger.info(
+    { datasetId, fileCount: files.length },
+    'Seal metadata stored successfully for all files'
+  );
 }

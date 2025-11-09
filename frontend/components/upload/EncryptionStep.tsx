@@ -110,6 +110,7 @@ export function EncryptionStep({
         const walrusResult = await uploadWithPreview(uploadData, previewBlob);
 
         return {
+          file_index: index, // Add file index for database storage
           fileId: file.id!,
           blobId: walrusResult.blobId,
           previewBlobId: walrusResult.previewBlobId,

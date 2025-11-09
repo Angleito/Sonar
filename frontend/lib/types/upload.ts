@@ -46,6 +46,7 @@ export interface EncryptionResult {
 
 // Per-file upload result for multi-file datasets
 export interface FileUploadResult {
+  file_index: number; // Index within dataset (0, 1, 2, ...) for database storage
   fileId: string; // Matches AudioFile.id
   blobId: string;
   previewBlobId?: string;
