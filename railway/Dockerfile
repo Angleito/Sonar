@@ -139,31 +139,35 @@ if [ -z "$KEY_SERVER_OBJECT_ID" ] || [ "$KEY_SERVER_OBJECT_ID" = "" ]; then\n\
   echo ""\n\
   \n\
   # Create temporary config for key derivation\n\
-  cat > /app/config/derive-config.yaml <<EOF\n\
+  cat > /app/config/derive-config.yaml <<'EOFCONFIG'\n\
 network: Mainnet\n\
+\n\
 server_mode: !Permissioned\n\
   client_configs:\n\
-  - name: Temporary\n\
-    client_master_key: !Derived\n\
-      derivation_index: 0\n\
-    key_server_object_id: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n\
-    package_ids:\n\
-    - \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n\
+    - name: Temporary\n\
+      client_master_key: !Derived\n\
+        derivation_index: 0\n\
+      key_server_object_id: "0x0000000000000000000000000000000000000000000000000000000000000000"\n\
+      package_ids:\n\
+        - "0x0000000000000000000000000000000000000000000000000000000000000000"\n\
 \n\
 server:\n\
-  address: \"0.0.0.0:2024\"\n\
-  metrics_address: \"0.0.0.0:9184\"\n\
+  address: "0.0.0.0:2024"\n\
+  metrics_address: "0.0.0.0:9184"\n\
 \n\
 master_key:\n\
-  master_seed: \"${MASTER_KEY}\"\n\
+  master_seed: "REPLACE_MASTER_KEY"\n\
 \n\
 sui:\n\
-  url: \"https://fullnode.mainnet.sui.io\"\n\
-EOF\n\
+  url: "https://fullnode.mainnet.sui.io"\n\
+EOFCONFIG\n\
+  \n\
+  # Replace master key in config\n\
+  sed -i "s|REPLACE_MASTER_KEY|${MASTER_KEY}|g" /app/config/derive-config.yaml\n\
   \n\
   echo "📝 Deriving public key..."\n\
   CONFIG_PATH=/app/config/derive-config.yaml timeout 5 /opt/key-server/bin/key-server 2>&1 | tee /tmp/derive.log || true\n\
-  PUBLIC_KEY=$(grep -oP \"Derived public key for index 0: \\\\K0x[a-f0-9]+\" /tmp/derive.log || echo \"DERIVATION_FAILED\")\n\
+  PUBLIC_KEY=$(grep -oP 'Derived public key for index 0: \\K0x[a-f0-9]+' /tmp/derive.log || echo "DERIVATION_FAILED")\n\
   \n\
   echo ""\n\
   echo "========================================================================"\n\
@@ -180,14 +184,14 @@ EOF\n\
   echo ""\n\
   echo "📝 Register on-chain:"\n\
   echo ""\n\
-  echo \"sui client call \\\\\\\\\"\n\
-  echo \"  --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\\\\\\\\"\n\
-  echo \"  --module key_server \\\\\\\\\"\n\
-  echo \"  --function create_and_transfer_v1 \\\\\\\\\"\n\
-  echo \"  --args ${PUBLIC_KEY} <YOUR_ADDRESS> \\\\\\\\\"\n\
-  echo \"  --gas-budget 100000000\"\n\
+  echo "sui client call \\\\"\n\
+  echo "  --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\\\"\n\
+  echo "  --module key_server \\\\"\n\
+  echo "  --function create_and_transfer_v1 \\\\"\n\
+  echo "  --args ${PUBLIC_KEY} YOUR_WALLET_ADDRESS \\\\"\n\
+  echo "  --gas-budget 100000000"\n\
   echo ""\n\
-  echo \"Then add the KEY_SERVER_OBJECT_ID from the transaction to Railway and redeploy\"\n\
+  echo "Then add the KEY_SERVER_OBJECT_ID from the transaction to Railway and redeploy"\n\
   echo ""\n\
   echo \"========================================================================\"\n\
   echo ""\n\
