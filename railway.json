@@ -3,7 +3,7 @@
   "build": {
     "builder": "dockerfile",
     "context": ".",
-    "dockerfilePath": "railway/Dockerfile"
+    "dockerfilePath": "seal-keyserver/Dockerfile"
   },
   "deploy": {
     "restartPolicyMaxRetries": 5,

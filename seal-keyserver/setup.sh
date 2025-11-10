@@ -19,10 +19,10 @@ echo -e "${BLUE}║       🔐 SONAR SEAL Key Server Setup                     �
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Check if running from railway directory
+# Check if running from seal-keyserver directory
 if [ ! -f "key-server-config.yaml.example" ]; then
-    echo -e "${RED}❌ Error: Must run from railway/ directory${NC}"
-    echo -e "${YELLOW}   cd railway && ./setup.sh${NC}"
+    echo -e "${RED}❌ Error: Must run from seal-keyserver/ directory${NC}"
+    echo -e "${YELLOW}   cd seal-keyserver && ./setup.sh${NC}"
     exit 1
 fi
 

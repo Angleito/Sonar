@@ -113,7 +113,7 @@ cargo build --bin seal-cli --release
 Update the key server config to use your mainnet package ID first:
 
 ```bash
-cd /path/to/sonar/railway
+cd /path/to/sonar/seal-keyserver
 
 # Edit key-server-config.yaml.example
 # Update line 29 to use your MAINNET package ID from Step 2.1
@@ -128,7 +128,7 @@ export KEY_SERVER_OBJECT_ID=0x00000000000000000000000000000000000000000000000000
 
 # Run key server locally
 cd ../seal
-cargo run --bin key-server -- --config ../sonar/railway/key-server-config.yaml.example
+cargo run --bin key-server -- --config ../sonar/seal-keyserver/key-server-config.yaml.example
 
 # Server will log:
 # "Derived public key for client 'SONAR Marketplace' (index 0): 0xABC123..."
@@ -187,7 +187,7 @@ CONFIG_PATH = /app/config/key-server-config.yaml
 
 ### 4.2 Update Config Template
 
-Make sure `railway/key-server-config.yaml.example` has:
+Make sure `seal-keyserver/key-server-config.yaml.example` has:
 
 ```yaml
 # Line 13: Network set to Mainnet
@@ -201,7 +201,7 @@ package_ids:
 ### 4.3 Commit and Deploy
 
 ```bash
-git add railway/key-server-config.yaml.example
+git add seal-keyserver/key-server-config.yaml.example
 git commit -m "feat: configure key server for mainnet deployment"
 git push origin main
 ```

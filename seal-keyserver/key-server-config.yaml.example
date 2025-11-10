@@ -11,7 +11,7 @@
 
 # Sui network configuration
 # NOTE: For Mainnet deployment, ensure:
-# 1. SONAR package is deployed to Mainnet (see railway/MAINNET_DEPLOYMENT.md)
+# 1. SONAR package is deployed to Mainnet (see seal-keyserver/MAINNET_DEPLOYMENT.md)
 # 2. KEY_SERVER_OBJECT_ID is registered on Mainnet
 # 3. package_ids below use your Mainnet package ID
 network: Mainnet

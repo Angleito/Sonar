@@ -1,10 +1,14 @@
 # =============================================================================
-# SONAR SEAL Key Server Dockerfile
+# SEAL Key Server Dockerfile
 # =============================================================================
-# Auto-generates key material ONLY on first deployment (when MASTER_KEY not set)
-# For production: Set MASTER_KEY and KEY_SERVER_OBJECT_ID env vars in Railway
-# To reset keys: Delete MASTER_KEY env var and redeploy
-# Last updated: 2025-11-09 - Package ID whitelist updated to 0xdff609...
+# Self-hosted SEAL encryption key server for Sui blockchain
+#
+# Three-stage deployment:
+# 1. First run (no env vars): Generates and displays MASTER_KEY
+# 2. Second run (MASTER_KEY only): Derives and displays PUBLIC_KEY
+# 3. Production (both env vars): Runs the key server
+#
+# See SETUP_GUIDE.md for complete instructions
 
 # Build stage
 FROM rust:1.83-bullseye AS builder
@@ -38,10 +42,12 @@ COPY --from=builder /work/target/release/seal-cli /opt/key-server/bin/seal-cli
 # Create config directory
 RUN mkdir -p /app/config
 
-# Copy config template and startup script
-COPY railway/key-server-config.yaml.example /app/config/template.yaml
-COPY railway/start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+# Copy config templates, scripts, and startup script
+COPY key-server-config.yaml.example /app/config/template.yaml
+COPY key-server-config-open.yaml.example /app/config/template-open.yaml
+COPY scripts/verify-config.sh /app/scripts/verify-config.sh
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh /app/scripts/verify-config.sh
 
 # Expose ports
 EXPOSE 2024 9184
