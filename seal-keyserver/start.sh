@@ -202,4 +202,9 @@ echo ""
 
 export CONFIG_PATH=/app/config/key-server-config.yaml
 export MASTER_KEY="${CLEAN_MASTER_KEY}"
+FORWARDED_PORT="${PORT:-2024}"
+if [ "$FORWARDED_PORT" != "2024" ]; then
+  echo "🔁 Detected platform port ${FORWARDED_PORT}, forwarding traffic to 2024"
+  socat TCP-LISTEN:"${FORWARDED_PORT}",fork,reuseaddr TCP:127.0.0.1:2024 &
+fi
 exec /opt/key-server/bin/key-server
