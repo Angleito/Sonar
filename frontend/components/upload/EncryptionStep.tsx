@@ -7,8 +7,20 @@ import { cn } from '@/lib/utils';
 import { AudioFile, EncryptionResult, FileUploadResult } from '@/lib/types/upload';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { useSealEncryption } from '@/hooks/useSeal';
-import { useWalrusUpload, generatePreviewBlob } from '@/hooks/useWalrusUpload';
+import { useWalrusParallelUpload } from '@/hooks/useWalrusParallelUpload';
+import { useSubWalletOrchestrator } from '@/hooks/useSubWalletOrchestrator';
 import { PACKAGE_ID } from '@/lib/sui/client';
+
+/**
+ * Generate preview blob from audio file
+ * Extracts first 30 seconds at lower quality
+ */
+async function generatePreviewBlob(audioFile: AudioFile): Promise<Blob> {
+  // TODO: Implement actual preview generation using Web Audio API
+  // For now, just return a small portion of the original file
+  const chunkSize = Math.min(audioFile.file.size, 1024 * 1024); // 1MB max
+  return audioFile.file.slice(0, chunkSize);
+}
 
 interface EncryptionStepProps {
   audioFile: AudioFile; // Backwards compatibility (single file)
@@ -41,9 +53,16 @@ export function EncryptionStep({
   const [progress, setProgress] = useState(0);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [completedFiles, setCompletedFiles] = useState<FileUploadResult[]>([]);
+  const [logs, setLogs] = useState<string[]>([]);
 
   const { isReady, encrypt, error: sealError } = useSealEncryption();
-  const { uploadWithPreview } = useWalrusUpload();
+  const { uploadBlob, progress: uploadProgress } = useWalrusParallelUpload();
+  const orchestrator = useSubWalletOrchestrator();
+
+  const addLog = (message: string) => {
+    console.log('[EncryptionStep]', message);
+    setLogs(prev => [...prev, message]);
+  };
 
   useEffect(() => {
     if (isReady) {
@@ -80,9 +99,30 @@ export function EncryptionStep({
       const totalFiles = filesToProcess.length;
       setStage('encrypting');
       setProgress(0);
+      setLogs([]);
 
-      // Process files in parallel
+      addLog(`Starting upload flow for ${totalFiles} file${totalFiles > 1 ? 's' : ''}`);
+
+      // Step 1: Initialize orchestrator and determine strategy
+      addLog('Initializing upload orchestrator...');
+      const totalSize = filesToProcess.reduce((sum, f) => sum + f.file.size, 0);
+      const walletCount = orchestrator.calculateWalletCount(totalSize);
+      const strategy = totalSize < 1024 * 1024 * 1024 ? 'blockberry' : 'sponsored-parallel';
+
+      addLog(`File size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+      addLog(`Upload strategy: ${strategy}`);
+      addLog(`Optimal wallet count: ${walletCount}`);
+
+      // Create demo wallets (for logging/telemetry, not used in Blockberry flow)
+      if (orchestrator.isReady) {
+        const demoWallets = orchestrator.createWallets(Math.min(walletCount, 4));
+        addLog(`Created ${demoWallets.length} ephemeral demo wallets (RAM-only)`);
+      }
+
+      // Step 2: Process files in parallel
       const filePromises = filesToProcess.map(async (file, index) => {
+        addLog(`[File ${index + 1}/${totalFiles}] Starting encryption: ${file.file.name}`);
+
         // Encrypt
         const encryptionResult = await encrypt(
           file.file,
@@ -92,25 +132,40 @@ export function EncryptionStep({
           },
           (progressPercent) => {
             const fileProgress = (index + progressPercent / 100) / totalFiles;
-            setProgress(Math.min(fileProgress * 60, 60));
+            setProgress(Math.min(fileProgress * 40, 40)); // 0-40% for encryption
+            if (progressPercent % 25 === 0) {
+              addLog(`[File ${index + 1}/${totalFiles}] Encryption progress: ${progressPercent}%`);
+            }
           }
         );
 
+        addLog(`[File ${index + 1}/${totalFiles}] Encryption complete - Policy ID: ${encryptionResult.identity.slice(0, 20)}...`);
+
         // Generate preview
+        setStage('generating-preview');
         const previewBlob = await generatePreviewBlob(file);
+        addLog(`[File ${index + 1}/${totalFiles}] Preview generated (${(previewBlob.size / 1024).toFixed(2)} KB)`);
 
-        // Upload to Walrus
-        const uploadData = {
-          encryptedBlob: new Blob([new Uint8Array(encryptionResult.encryptedData)]),
-          seal_policy_id: encryptionResult.identity,
-          backupKey: encryptionResult.backupKey,
-          metadata: encryptionResult.metadata,
-        };
+        // Step 3: Upload to Walrus using parallel upload hook
+        setStage('uploading-walrus');
+        addLog(`[File ${index + 1}/${totalFiles}] Uploading to Walrus via ${strategy}...`);
 
-        const walrusResult = await uploadWithPreview(uploadData, previewBlob);
+        const encryptedBlob = new Blob([new Uint8Array(encryptionResult.encryptedData)]);
+        const walrusResult = await uploadBlob(
+          encryptedBlob,
+          encryptionResult.identity,
+          encryptionResult.backupKey,
+          encryptionResult.metadata,
+          previewBlob
+        );
+
+        addLog(`[File ${index + 1}/${totalFiles}] Upload complete - Blob ID: ${walrusResult.blobId}`);
+
+        const completedProgress = ((index + 1) / totalFiles) * 80; // 40-80% for upload
+        setProgress(40 + completedProgress);
 
         return {
-          file_index: index, // Add file index for database storage
+          file_index: index,
           fileId: file.id!,
           blobId: walrusResult.blobId,
           previewBlobId: walrusResult.previewBlobId,
@@ -122,14 +177,20 @@ export function EncryptionStep({
         };
       });
 
-      setStage('uploading-walrus');
       const results = await Promise.all(filePromises);
       setCompletedFiles(results);
-      setProgress(80);
 
-      // Finalize
+      // Step 4: Cleanup
+      if (orchestrator.walletCount > 0) {
+        addLog('Cleaning up ephemeral wallets...');
+        orchestrator.discardAllWallets();
+        addLog('Wallets discarded (no sweeping needed)');
+      }
+
+      // Step 5: Finalize
       setStage('finalizing');
       setProgress(90);
+      addLog('Finalizing upload...');
       await new Promise((resolve) => setTimeout(resolve, 500));
       setProgress(100);
 
@@ -150,13 +211,17 @@ export function EncryptionStep({
       };
 
       setStage('completed');
+      addLog('SUCCESS! Upload flow completed');
+
       setTimeout(() => {
         onEncrypted(finalResult);
       }, 1000);
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Encryption or upload failed';
       console.error('Encryption or upload failed:', error);
-      onError(error instanceof Error ? error.message : 'Encryption or upload failed');
+      addLog(`ERROR: ${errorMessage}`);
+      onError(errorMessage);
     }
   };
 

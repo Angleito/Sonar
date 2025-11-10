@@ -11,6 +11,8 @@ const WALRUS_AGGREGATOR_URL =
   process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL ||
   'https://aggregator.walrus-testnet.walrus.space';
 
+const BLOCKBERRY_API_KEY = process.env.BLOCKBERRY_API_KEY || '';
+
 /**
  * Edge Function: Walrus Upload Proxy
  * Streams encrypted audio blob to Walrus aggregator
@@ -32,6 +34,8 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file');
     const sealPolicyId = formData.get('seal_policy_id');
     const epochsParam = formData.get('epochs');
+    const backupKeyParam = formData.get('backupKey'); // Comma-separated array
+    const metadataParam = formData.get('metadata'); // JSON string
 
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
@@ -45,6 +49,16 @@ export async function POST(request: NextRequest) {
         { error: 'Missing seal_policy_id' },
         { status: 400 }
       );
+    }
+
+    // Parse metadata if provided
+    let metadata = null;
+    if (metadataParam) {
+      try {
+        metadata = JSON.parse(metadataParam.toString());
+      } catch (e) {
+        console.warn('Failed to parse metadata:', e);
+      }
     }
 
     // Validate file size (max 13 GiB - Walrus maximum)
@@ -64,12 +78,19 @@ export async function POST(request: NextRequest) {
       : `${WALRUS_PUBLISHER_URL}/v1/blobs`;
 
     // Upload to Walrus (PUT request as per Walrus HTTP API)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+    };
+
+    // Add Blockberry API key if configured
+    if (BLOCKBERRY_API_KEY) {
+      headers['X-API-Key'] = BLOCKBERRY_API_KEY;
+    }
+
     const uploadResponse = await fetch(walrusUrl, {
       method: 'PUT',
       body: file,
-      headers: {
-        'Content-Type': 'application/octet-stream',
-      },
+      headers,
     });
 
     if (!uploadResponse.ok) {
@@ -105,12 +126,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Return blobId and metadata to client
+    // SECURITY: backupKey is intentionally NOT included in response - it stays client-side
     // Client will store seal_policy_id and backup_key after on-chain publish
     return NextResponse.json({
       blobId,
       certifiedEpoch,
       fileSize: file.size,
       seal_policy_id: sealPolicyId,
+      strategy: 'blockberry', // Current upload strategy
+      ...(metadata && { metadata }), // Include metadata if provided
     });
   } catch (error) {
     console.error('Walrus upload error:', error);

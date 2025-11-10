@@ -101,9 +101,32 @@ export function useWalrusParallelUpload() {
         metadata
       );
 
+      // Upload preview blob if provided
+      let finalPreviewBlobId = previewBlobId;
+      if (previewBlob) {
+        try {
+          const previewFormData = new FormData();
+          previewFormData.append('file', previewBlob, 'preview.mp3');
+
+          const previewResponse = await fetch('/api/edge/walrus/preview', {
+            method: 'POST',
+            body: previewFormData,
+          });
+
+          if (previewResponse.ok) {
+            const previewResult = await previewResponse.json();
+            finalPreviewBlobId = previewResult.previewBlobId || previewResult.blobId;
+          } else {
+            console.warn('Preview upload failed, continuing without preview');
+          }
+        } catch (error) {
+          console.warn('Preview upload error:', error);
+        }
+      }
+
       return {
         blobId,
-        previewBlobId,
+        previewBlobId: finalPreviewBlobId,
         seal_policy_id,
         backupKey,
         strategy: 'blockberry',

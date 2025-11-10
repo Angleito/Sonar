@@ -3,8 +3,18 @@ import { useMutation } from '@tanstack/react-query';
 import type { AudioFile, WalrusUploadResult, EncryptionResult } from '@/lib/types/upload';
 
 /**
+ * @deprecated This hook is deprecated. Use `useWalrusParallelUpload` instead.
+ *
  * Hook for uploading encrypted audio to Walrus via Edge Function
  * Handles streaming upload of encrypted blobs
+ *
+ * MIGRATION GUIDE:
+ * - Replace `useWalrusUpload` with `useWalrusParallelUpload`
+ * - Use `uploadBlob()` instead of `uploadAsync()` or `uploadWithPreview()`
+ * - The parallel upload hook includes orchestrator integration and better telemetry
+ *
+ * @see useWalrusParallelUpload
+ * @see /frontend/components/upload/EncryptionStep.tsx (reference implementation)
  */
 
 interface UseWalrusUploadOptions {
