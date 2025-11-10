@@ -40,16 +40,9 @@ sui:
   url: "https://fullnode.mainnet.sui.io"
 EOF
 
-  echo "📝 Deriving public key from generated master key..."
-  # Use seal-cli to deterministically derive (Masterkey, Publickey) for index 0
-  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-key --seed "${GENERATED_MASTER_KEY}" --index 0 | awk '/Publickey:/ {print $2; exit}')
-  if [ -z "$PUBLIC_KEY" ]; then
-    PUBLIC_KEY="DERIVATION_FAILED"
-  fi
-
   echo ""
   echo "========================================================================"
-  echo "🎉 KEY MATERIAL GENERATED"
+  echo "🎉 MASTER KEY GENERATED"
   echo "========================================================================"
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -59,25 +52,21 @@ EOF
   echo "$GENERATED_MASTER_KEY"
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "📋 PUBLIC_KEY (for on-chain registration):"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
-  echo "${PUBLIC_KEY}"
+  echo "📝 Next steps:"
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "1. Save the MASTER_KEY above to Railway environment variables"
+  echo "2. Redeploy the service (it will output the PUBLIC_KEY in the logs)"
+  echo "3. Use the PUBLIC_KEY from the logs to register on-chain:"
   echo ""
-  echo "📝 Register on-chain:"
+  echo "   sui client call \\"
+  echo "     --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\"
+  echo "     --module key_server \\"
+  echo "     --function create_and_transfer_v1 \\"
+  echo "     --args <PUBLIC_KEY> <YOUR_ADDRESS> \\"
+  echo "     --gas-budget 100000000"
   echo ""
-  echo "sui client call \\"
-  echo "  --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\"
-  echo "  --module key_server \\"
-  echo "  --function create_and_transfer_v1 \\"
-  echo "  --args ${PUBLIC_KEY} <YOUR_ADDRESS> \\"
-  echo "  --gas-budget 100000000"
-  echo ""
-  echo "Then set Railway env vars and redeploy:"
-  echo "  MASTER_KEY=$GENERATED_MASTER_KEY"
-  echo "  KEY_SERVER_OBJECT_ID=<object ID from transaction>"
+  echo "4. Set KEY_SERVER_OBJECT_ID from the transaction and redeploy"
   echo ""
   echo "========================================================================"
   echo ""
@@ -94,63 +83,25 @@ echo "✅ Using existing MASTER_KEY from Railway"
 
 # Check if we have KEY_SERVER_OBJECT_ID
 if [ -z "$KEY_SERVER_OBJECT_ID" ] || [ "$KEY_SERVER_OBJECT_ID" = "" ]; then
-  echo "⚠️  KEY_SERVER_OBJECT_ID not set - deriving PUBLIC_KEY for registration"
+  echo "⚠️  KEY_SERVER_OBJECT_ID not set"
   echo ""
-
-  # Create temporary config for key derivation
-  cat > /app/config/derive-config.yaml <<'EOFCONFIG'
-network: Mainnet
-
-server_mode: !Permissionless
-
-server:
-  address: "0.0.0.0:2024"
-  metrics_address: "0.0.0.0:9184"
-
-master_key:
-  master_seed: "REPLACE_MASTER_KEY"
-
-sui:
-  url: "https://fullnode.mainnet.sui.io"
-EOFCONFIG
-
-  echo "📝 Deriving public key from master key..."
-  # Use seal-cli to deterministically derive (Masterkey, Publickey) for index 0
-  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-key --seed "${MASTER_KEY}" --index 0 | awk '/Publickey:/ {print $2; exit}')
-  if [ -z "$PUBLIC_KEY" ]; then
-    PUBLIC_KEY="DERIVATION_FAILED"
-  fi
-
+  echo "The key server will start and display the PUBLIC_KEY in the logs."
+  echo "Look for 'Client \"SONAR Marketplace\" uses public key:' in the startup logs."
   echo ""
-  echo "========================================================================"
-  echo "🎉 PUBLIC KEY DERIVED"
-  echo "========================================================================"
+  echo "Once you have the PUBLIC_KEY:"
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "📋 PUBLIC_KEY (for on-chain registration):"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "1. Register it on-chain:"
+  echo "   sui client call \\"
+  echo "     --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\"
+  echo "     --module key_server \\"
+  echo "     --function create_and_transfer_v1 \\"
+  echo "     --args <PUBLIC_KEY_FROM_LOGS> <YOUR_ADDRESS> \\"
+  echo "     --gas-budget 100000000"
   echo ""
-  echo "${PUBLIC_KEY}"
+  echo "2. Set KEY_SERVER_OBJECT_ID environment variable and redeploy"
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "Starting key server in setup mode..."
   echo ""
-  echo "📝 Register on-chain:"
-  echo ""
-  echo "sui client call \\"
-  echo "  --package 0xa212c4c6c7183b911d0be8768f4cb1df7a383025b5d0ba0c014009f0f30f5f8d \\"
-  echo "  --module key_server \\"
-  echo "  --function create_and_transfer_v1 \\"
-  echo "  --args ${PUBLIC_KEY} YOUR_WALLET_ADDRESS \\"
-  echo "  --gas-budget 100000000"
-  echo ""
-  echo "Then add the KEY_SERVER_OBJECT_ID from the transaction to Railway and redeploy"
-  echo ""
-  echo "========================================================================"
-  echo ""
-
-  echo "⏳ Keeping container alive for 90 seconds so you can copy the PUBLIC_KEY..."
-  sleep 90
-  exit 0
 fi
 
 echo "🚀 Starting production key server..."
