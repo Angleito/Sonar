@@ -54,6 +54,30 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
     error: null,
   });
 
+  // Serialize state for localStorage (exclude large binary data)
+  const serializeState = (state: UploadWizardState) => {
+    return {
+      ...state,
+      // Remove large File objects
+      audioFile: state.audioFile ? {
+        duration: state.audioFile.duration,
+        id: state.audioFile.id,
+        // Skip 'file', 'waveform', 'preview' - these are large
+      } : null,
+      audioFiles: state.audioFiles.map(f => ({
+        duration: f.duration,
+        id: f.id,
+      })),
+      // Remove large binary data from encryption result
+      encryption: state.encryption ? {
+        seal_policy_id: state.encryption.seal_policy_id,
+        metadata: state.encryption.metadata,
+        // Skip 'encryptedBlob', 'previewBlob', 'backupKey' - these are large or sensitive
+      } : null,
+      // walrusUpload only has IDs and metadata, safe to keep
+    };
+  };
+
   // Persist wizard state to localStorage for recovery
   useEffect(() => {
     if (open) {
@@ -62,11 +86,13 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
         try {
           const parsed = JSON.parse(savedState);
           // Only restore if we're not on success step
-          if (parsed.step !== 'success') {
+          // Note: We can't restore full file data, user will need to re-upload
+          if (parsed.step !== 'success' && parsed.step !== 'encryption') {
             setState(parsed);
           }
         } catch (e) {
           console.error('Failed to restore wizard state:', e);
+          localStorage.removeItem('sonar-upload-wizard-state');
         }
       }
     }
@@ -74,7 +100,16 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
 
   useEffect(() => {
     if (open && state.step !== 'success') {
-      localStorage.setItem('sonar-upload-wizard-state', JSON.stringify(state));
+      try {
+        const serialized = serializeState(state);
+        localStorage.setItem('sonar-upload-wizard-state', JSON.stringify(serialized));
+      } catch (e) {
+        console.error('Failed to save wizard state:', e);
+        // If still quota exceeded, clear localStorage
+        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+          localStorage.removeItem('sonar-upload-wizard-state');
+        }
+      }
     }
   }, [state, open]);
 
