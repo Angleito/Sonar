@@ -84,9 +84,9 @@ sui:\n\
   url: "https://fullnode.mainnet.sui.io"\n\
 EOF\n\
   \n\
-  echo "📝 Deriving public key..."\n\
-  CONFIG_PATH=/app/config/derive-config.yaml timeout 5 /opt/key-server/bin/key-server 2>&1 | tee /tmp/derive.log || true\n\
-  PUBLIC_KEY=$(grep -oP "Derived public key for index 0: \\K0x[a-f0-9]+" /tmp/derive.log || echo "DERIVATION_FAILED")\n\
+  echo "📝 Deriving public key from generated master key..."\n\
+  # Use seal-cli to derive the public key directly\n\
+  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-pk --seed "${GENERATED_MASTER_KEY}" --index 0 2>&1 | grep -oP "0x[a-f0-9]{192}" || echo "DERIVATION_FAILED")\n\
   \n\
   echo ""\n\
   echo "========================================================================"\n\
@@ -142,14 +142,7 @@ if [ -z "$KEY_SERVER_OBJECT_ID" ] || [ "$KEY_SERVER_OBJECT_ID" = "" ]; then\n\
   cat > /app/config/derive-config.yaml <<'EOFCONFIG'\n\
 network: Mainnet\n\
 \n\
-server_mode: !Permissioned\n\
-  client_configs:\n\
-    - name: Temporary\n\
-      client_master_key: !Derived\n\
-        derivation_index: 0\n\
-      key_server_object_id: "0x0000000000000000000000000000000000000000000000000000000000000000"\n\
-      package_ids:\n\
-        - "0x0000000000000000000000000000000000000000000000000000000000000000"\n\
+server_mode: !Permissionless\n\
 \n\
 server:\n\
   address: "0.0.0.0:2024"\n\
@@ -162,12 +155,9 @@ sui:\n\
   url: "https://fullnode.mainnet.sui.io"\n\
 EOFCONFIG\n\
   \n\
-  # Replace master key in config\n\
-  sed -i "s|REPLACE_MASTER_KEY|${MASTER_KEY}|g" /app/config/derive-config.yaml\n\
-  \n\
-  echo "📝 Deriving public key..."\n\
-  CONFIG_PATH=/app/config/derive-config.yaml timeout 5 /opt/key-server/bin/key-server 2>&1 | tee /tmp/derive.log || true\n\
-  PUBLIC_KEY=$(grep -oP "Derived public key for index 0: \\\\K0x[a-f0-9]+" /tmp/derive.log || echo "DERIVATION_FAILED")\n\
+  echo "📝 Deriving public key from master key..."\n\
+  # Use seal-cli to derive the public key directly\n\
+  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-pk --seed "${MASTER_KEY}" --index 0 2>&1 | grep -oP "0x[a-f0-9]{192}" || echo "DERIVATION_FAILED")\n\
   \n\
   echo ""\n\
   echo "========================================================================"\n\
