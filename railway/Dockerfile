@@ -85,8 +85,11 @@ sui:\n\
 EOF\n\
   \n\
   echo "📝 Deriving public key from generated master key..."\n\
-  # Use seal-cli to derive the public key directly\n\
-  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-pk --seed "${GENERATED_MASTER_KEY}" --index 0 2>&1 | grep -oP "0x[a-f0-9]{192}" || echo "DERIVATION_FAILED")\n\
+  # Use seal-cli to deterministically derive (Masterkey, Publickey) for index 0\n\
+  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-key --seed "${GENERATED_MASTER_KEY}" --index 0 | awk '/Publickey:/ {print $2; exit}')\n\
+  if [ -z "$PUBLIC_KEY" ]; then\n\
+    PUBLIC_KEY="DERIVATION_FAILED"\n\
+  fi\n\
   \n\
   echo ""\n\
   echo "========================================================================"\n\
@@ -156,8 +159,11 @@ sui:\n\
 EOFCONFIG\n\
   \n\
   echo "📝 Deriving public key from master key..."\n\
-  # Use seal-cli to derive the public key directly\n\
-  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-pk --seed "${MASTER_KEY}" --index 0 2>&1 | grep -oP "0x[a-f0-9]{192}" || echo "DERIVATION_FAILED")\n\
+  # Use seal-cli to deterministically derive (Masterkey, Publickey) for index 0\n\
+  PUBLIC_KEY=$(/opt/key-server/bin/seal-cli derive-key --seed "${MASTER_KEY}" --index 0 | awk '/Publickey:/ {print $2; exit}')\n\
+  if [ -z "$PUBLIC_KEY" ]; then\n\
+    PUBLIC_KEY="DERIVATION_FAILED"\n\
+  fi\n\
   \n\
   echo ""\n\
   echo "========================================================================"\n\
