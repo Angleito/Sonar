@@ -21,6 +21,7 @@ export function Navbar() {
     { href: '/', label: 'Home' },
     { href: '/marketplace', label: 'Marketplace' },
     { href: '/stats', label: 'Economics' },
+    { href: '/roadmap', label: 'Roadmap' },
   ];
 
   return (
