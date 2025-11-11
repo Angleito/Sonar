@@ -9,14 +9,6 @@ export type MediaType = 'audio' | 'video';
 // Audio/video format types
 export type Format = 'mp3' | 'wav' | 'm4a' | 'ogg' | 'mp4' | 'webm';
 
-// Voting statistics for community curation
-export interface VotingStats {
-  upvotes: bigint;
-  downvotes: bigint;
-  voters: string[];  // Array of voter addresses
-  net_score: bigint;  // upvotes - downvotes
-}
-
 // Dataset object (client-facing, NO blob IDs exposed)
 export interface Dataset {
   id: string;  // Can be an off-chain reference ID or on-chain Sui object ID (0x...)
@@ -37,7 +29,6 @@ export interface Dataset {
   description: string;
   total_purchases?: number;
   previewUrl?: string; // Optional direct preview URL when available
-  voting_stats?: VotingStats;  // Optional voting data for testnet submissions
   bundled_clips?: Dataset[];  // Optional array of clips for bundle datasets
 }
 

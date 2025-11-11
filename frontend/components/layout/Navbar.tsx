@@ -20,7 +20,6 @@ export function Navbar() {
   const navLinks = [
     { href: '/', label: 'Home' },
     { href: '/marketplace', label: 'Marketplace' },
-    { href: '/marketplace-testnet', label: 'Marketplace Testnet' },
     { href: '/stats', label: 'Economics' },
   ];
 
@@ -76,8 +75,8 @@ export function Navbar() {
           {/* Right Section: Network Badge + Wallet */}
           <div className="flex items-center space-x-4">
             {/* Network Status */}
-            <SignalBadge variant="info" className="hidden sm:flex">
-              Testnet
+            <SignalBadge variant="success" className="hidden sm:flex">
+              Mainnet
             </SignalBadge>
 
             {/* Wallet Connection Info (when connected) */}

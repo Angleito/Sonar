@@ -157,7 +157,7 @@ export function PublishStep({
             }
 
             // Store seal metadata in backend for decryption
-            // SECURITY: backup_key is currently base64-encoded but not encrypted
+            // SECURITY: backup_key storage temporarily disabled pending encryption implementation
             // TODO: Implement backup key encryption with user's public key before persistence
             // This requires:
             // 1. Derive/obtain user's public key from wallet
@@ -170,7 +170,7 @@ export function PublishStep({
                 ? walrusUpload.files.map(file => ({
                     file_index: file.file_index || 0,
                     seal_policy_id: file.seal_policy_id,
-                    backup_key: uint8ArrayToBase64(file.backupKey),
+                    // backup_key: uint8ArrayToBase64(file.backupKey), // TODO: Add backupKey to FileUploadResult type
                     blob_id: file.blobId,
                     preview_blob_id: file.previewBlobId,
                     duration_seconds: Math.floor(file.duration),
@@ -178,7 +178,7 @@ export function PublishStep({
                 : [{
                     file_index: 0,
                     seal_policy_id: walrusUpload.seal_policy_id,
-                    backup_key: uint8ArrayToBase64(walrusUpload.backupKey),
+                    // backup_key: uint8ArrayToBase64(walrusUpload.backupKey), // TODO: Add backupKey to WalrusUploadResult type
                     blob_id: walrusUpload.blobId,
                     preview_blob_id: walrusUpload.previewBlobId,
                     duration_seconds: 3600, // Placeholder for single-file backwards compat
