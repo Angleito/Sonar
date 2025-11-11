@@ -7,16 +7,18 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, mock } from 'bu
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 // Mock fetch globally
-const mockFetch = mock(() => Promise.resolve({
-  ok: true,
-  json: async () => ({
-    blobId: 'test-blob-id',
-    certifiedEpoch: 100,
-    fileSize: 1024,
-    seal_policy_id: 'test-policy-id',
-    strategy: 'blockberry',
-  }),
-}));
+const mockFetch = mock<(...args: any[]) => Promise<any>>(() =>
+  Promise.resolve({
+    ok: true,
+    json: async () => ({
+      blobId: 'test-blob-id',
+      certifiedEpoch: 100,
+      fileSize: 1024,
+      seal_policy_id: 'test-policy-id',
+      strategy: 'blockberry',
+    }),
+  })
+);
 
 global.fetch = mockFetch as any;
 
@@ -95,19 +97,31 @@ describe('useWalrusParallelUpload', () => {
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
       // Mock preview upload
-      mockFetch.mockImplementationOnce(() => Promise.resolve({
-        ok: true,
-        json: async () => ({
-          blobId: 'test-blob-id',
-          seal_policy_id: 'test-policy-id',
-          strategy: 'blockberry',
-        }),
-      })).mockImplementationOnce(() => Promise.resolve({
-        ok: true,
-        json: async () => ({
-          previewBlobId: 'preview-blob-id',
-        }),
-      }));
+      mockFetch
+        .mockImplementationOnce(() =>
+          Promise.resolve({
+            ok: true,
+            json: async () => ({
+              blobId: 'test-blob-id',
+              certifiedEpoch: 100,
+              fileSize: encryptedBlob.size,
+              seal_policy_id: 'test-policy-id',
+              strategy: 'blockberry',
+            }),
+          })
+        )
+        .mockImplementationOnce(() =>
+          Promise.resolve({
+            ok: true,
+            json: async () => ({
+              previewBlobId: 'preview-blob-id',
+              certifiedEpoch: 100,
+              fileSize: previewBlob.size,
+              seal_policy_id: 'test-policy-id',
+              strategy: 'blockberry',
+            }),
+          })
+        );
 
       let uploadResult: any;
       await act(async () => {
@@ -115,7 +129,11 @@ describe('useWalrusParallelUpload', () => {
           encryptedBlob,
           seal_policy_id,
           metadata,
-          previewBlob
+          {
+            previewBlob,
+            previewMimeType: previewBlob.type,
+            mimeType: 'audio/mp3',
+          }
         );
       });
 
@@ -129,10 +147,13 @@ describe('useWalrusParallelUpload', () => {
       delete process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE;
       const { result } = renderHook(() => useWalrusParallelUpload());
 
-      mockFetch.mockImplementationOnce(() => Promise.resolve({
-        ok: false,
-        statusText: 'Internal Server Error',
-      }));
+      mockFetch.mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: false,
+          statusText: 'Internal Server Error',
+          json: async () => ({}),
+        })
+      );
 
       const encryptedBlob = new Blob(['test data']);
       const seal_policy_id = 'test-policy-id';

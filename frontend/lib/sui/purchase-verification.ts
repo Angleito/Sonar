@@ -4,6 +4,7 @@
  */
 
 import { SuiClient } from '@mysten/sui/client';
+import type { EventId } from '@mysten/sui/client';
 
 // In-memory cache with 5-minute TTL
 interface CacheEntry {
@@ -73,7 +74,7 @@ async function queryPurchaseEvents(
   try {
     // Query events from blockchain
     // Event type: {PACKAGE_ID}::marketplace::DatasetPurchased
-    let cursor: string | null = null;
+    let cursor: EventId | null = null;
     const normalizedBuyer = userAddress.toLowerCase();
 
     for (let page = 0; page < MAX_EVENT_PAGES; page++) {
@@ -81,7 +82,7 @@ async function queryPurchaseEvents(
         query: {
           MoveEventType: `${packageId}::marketplace::DatasetPurchased`,
         },
-        cursor,
+        cursor: cursor ?? undefined,
         limit: EVENTS_PAGE_SIZE,
         order: 'descending',
       });

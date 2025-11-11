@@ -28,6 +28,8 @@ const mockUploadBlob = mock(() => Promise.resolve({
   previewBlobId: 'preview-blob-id',
   seal_policy_id: 'test-seal-policy-id',
   strategy: 'blockberry' as const,
+  mimeType: 'audio/mp3',
+  previewMimeType: 'audio/mp3',
 }));
 
 // Mock the hooks
@@ -78,6 +80,7 @@ describe('EncryptionStep', () => {
     file: new File(['test'], 'test.mp3', { type: 'audio/mp3' }),
     duration: 180,
     id: 'test-file-id',
+    mimeType: 'audio/mp3',
   };
 
   const mockOnEncrypted = mock(() => {});
@@ -122,7 +125,10 @@ describe('EncryptionStep', () => {
         expect(mockOnEncrypted).toHaveBeenCalled();
       }, { timeout: 5000 });
 
-      const result = mockOnEncrypted.mock.calls[0][0];
+      const [firstCall] = mockOnEncrypted.mock.calls as any[];
+      expect(firstCall).toBeDefined();
+      const result = firstCall?.[0];
+      expect(result).toBeDefined();
       expect(result.seal_policy_id).toBe('test-seal-policy-id');
       expect(result.walrusBlobId).toBe('test-blob-id');
     });
@@ -154,7 +160,10 @@ describe('EncryptionStep', () => {
         expect(mockOnEncrypted).toHaveBeenCalled();
       }, { timeout: 5000 });
 
-      const result = mockOnEncrypted.mock.calls[0][0];
+      const [firstCall] = mockOnEncrypted.mock.calls as any[];
+      expect(firstCall).toBeDefined();
+      const result = firstCall?.[0];
+      expect(result).toBeDefined();
       expect(result.files).toBeDefined();
       expect(result.files?.length).toBe(3);
       expect(result.bundleDiscountBps).toBeGreaterThan(0); // Should have bundle discount
@@ -239,7 +248,10 @@ describe('EncryptionStep', () => {
         expect(mockOnEncrypted).toHaveBeenCalled();
       }, { timeout: 5000 });
 
-      const result = mockOnEncrypted.mock.calls[0][0];
+      const [firstCall] = mockOnEncrypted.mock.calls as any[];
+      expect(firstCall).toBeDefined();
+      const result = firstCall?.[0];
+      expect(result).toBeDefined();
       expect(result.bundleDiscountBps).toBe(1000); // 10%
     });
 
@@ -262,7 +274,10 @@ describe('EncryptionStep', () => {
         expect(mockOnEncrypted).toHaveBeenCalled();
       }, { timeout: 5000 });
 
-      const result = mockOnEncrypted.mock.calls[0][0];
+      const [firstCall] = mockOnEncrypted.mock.calls as any[];
+      expect(firstCall).toBeDefined();
+      const result = firstCall?.[0];
+      expect(result).toBeDefined();
       expect(result.bundleDiscountBps).toBe(2000); // 20%
     });
   });
