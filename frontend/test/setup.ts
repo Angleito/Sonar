@@ -9,6 +9,8 @@ globalThis.HTMLElement = windowInstance.HTMLElement as unknown as typeof HTMLEle
 globalThis.HTMLAnchorElement = windowInstance.HTMLAnchorElement as unknown as typeof HTMLAnchorElement;
 globalThis.Node = windowInstance.Node as unknown as typeof Node;
 globalThis.Text = windowInstance.Text as unknown as typeof Text;
+globalThis.localStorage = windowInstance.localStorage as unknown as Storage;
+globalThis.sessionStorage = windowInstance.sessionStorage as unknown as Storage;
 
 Object.defineProperty(globalThis.document, 'cookie', {
   value: '',

@@ -11,7 +11,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useSubWalletOrchestrator, getUploadStrategy } from './useSubWalletOrchestrator';
+import { useSubWalletOrchestrator, getUploadStrategy, distributeFileAcrossWallets } from './useSubWalletOrchestrator';
 
 export interface WalrusUploadProgress {
   totalFiles: number;
@@ -27,7 +27,14 @@ export interface WalrusUploadResult {
   previewBlobId?: string;
   seal_policy_id: string;
   strategy: 'blockberry' | 'sponsored-parallel';
+  prototypeMetadata?: {
+    walletCount: number;
+    chunkCount: number;
+    estimatedChunkSize: number;
+  };
 }
+
+type WalrusUploadMetadata = Record<string, unknown> | undefined;
 
 export function useWalrusParallelUpload() {
   const orchestrator = useSubWalletOrchestrator();
@@ -47,13 +54,16 @@ export function useWalrusParallelUpload() {
   const uploadViaBlockberry = useCallback(async (
     encryptedBlob: Blob,
     seal_policy_id: string,
-    metadata: any
+    metadata: WalrusUploadMetadata,
+    previewBlob?: Blob
   ): Promise<{ blobId: string; previewBlobId?: string }> => {
     // Call existing Blockberry upload endpoint
     const formData = new FormData();
     formData.append('file', encryptedBlob);
     formData.append('seal_policy_id', seal_policy_id);
-    formData.append('metadata', JSON.stringify(metadata));
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
 
     const response = await fetch('/api/edge/walrus/upload', {
       method: 'POST',
@@ -65,11 +75,106 @@ export function useWalrusParallelUpload() {
     }
 
     const result = await response.json();
+
+    // Upload preview blob if provided and not already handled by API
+    let finalPreviewBlobId = result.previewBlobId as string | undefined;
+    if (previewBlob) {
+      try {
+        const previewFormData = new FormData();
+        previewFormData.append('file', previewBlob, 'preview.mp3');
+
+        const previewResponse = await fetch('/api/edge/walrus/preview', {
+          method: 'POST',
+          body: previewFormData,
+        });
+
+        if (previewResponse.ok) {
+          const previewResult = await previewResponse.json();
+          finalPreviewBlobId = previewResult.previewBlobId || previewResult.blobId;
+        } else {
+          console.warn('Preview upload failed, continuing without preview');
+        }
+      } catch (error) {
+        console.warn('Preview upload error:', error);
+      }
+    }
+
     return {
       blobId: result.blobId,
-      previewBlobId: result.previewBlobId,
+      previewBlobId: finalPreviewBlobId,
     };
   }, []);
+
+  /**
+   * Sponsored parallel upload prototype
+   * Simulates chunk orchestration with ephemeral wallets, then falls back to Blockberry upload.
+   */
+  const uploadViaSponsoredPrototype = useCallback(async (
+    encryptedBlob: Blob,
+    seal_policy_id: string,
+    metadata: WalrusUploadMetadata,
+    previewBlob?: Blob
+  ): Promise<WalrusUploadResult> => {
+    const minWallets = 1;
+
+    if (!orchestrator.isReady) {
+      throw new Error('Sponsored uploads require a connected wallet session for orchestration.');
+    }
+
+    const totalSize = encryptedBlob.size;
+    const walletCount = Math.max(minWallets, orchestrator.calculateWalletCount(totalSize));
+    const wallets = orchestrator.createWallets(walletCount);
+    const chunkPlan = distributeFileAcrossWallets(totalSize, walletCount);
+
+    console.log('[WalrusSponsoredPrototype] Created wallets for upload', {
+      walletCount: wallets.length,
+      totalSize,
+      chunkPlan,
+    });
+
+    // Simulate per-chunk processing to surface progress updates
+    let processedBytes = 0;
+    for (let i = 0; i < chunkPlan.length; i++) {
+      const chunk = chunkPlan[i];
+
+      // Yield to the event loop to allow UI updates between chunks
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      processedBytes += chunk.size;
+      const percent = totalSize === 0 ? 0 : Math.min(90, Math.round((processedBytes / totalSize) * 90));
+
+      setProgress((prev) => ({
+        ...prev,
+        stage: 'uploading',
+        currentFile: 0,
+        fileProgress: percent,
+        totalProgress: percent,
+        totalFiles: 1,
+      }));
+    }
+
+    try {
+      const blockberryResult = await uploadViaBlockberry(
+        encryptedBlob,
+        seal_policy_id,
+        metadata,
+        previewBlob
+      );
+
+      return {
+        ...blockberryResult,
+        seal_policy_id,
+        strategy: 'sponsored-parallel',
+        prototypeMetadata: {
+          walletCount,
+          chunkCount: chunkPlan.length,
+          estimatedChunkSize: chunkPlan.length > 0 ? Math.ceil(totalSize / chunkPlan.length) : totalSize,
+        },
+      };
+    } finally {
+      orchestrator.discardAllWallets();
+    }
+  }, [orchestrator, uploadViaBlockberry]);
 
   /**
    * Upload encrypted blob to Walrus (auto-selects strategy)
@@ -77,64 +182,68 @@ export function useWalrusParallelUpload() {
   const uploadBlob = useCallback(async (
     encryptedBlob: Blob,
     seal_policy_id: string,
-    metadata: any,
+    metadata: WalrusUploadMetadata,
     previewBlob?: Blob
   ): Promise<WalrusUploadResult> => {
-    const strategy = getUploadStrategy(encryptedBlob.size);
+    const rawStrategy = getUploadStrategy(encryptedBlob.size);
 
-    setProgress(prev => ({
+    // Allow prototype to be exercised for smaller inputs by lowering threshold via env var
+    const prototypeMinSize = Number(process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE ?? NaN);
+    const prototypeEnabled = Number.isFinite(prototypeMinSize);
+    const strategy =
+      prototypeEnabled && encryptedBlob.size >= 0 && encryptedBlob.size >= prototypeMinSize
+        ? 'sponsored-parallel'
+        : rawStrategy;
+
+    setProgress((prev) => ({
       ...prev,
       stage: 'uploading',
+      totalFiles: prev.totalFiles || 1,
+      currentFile: 0,
       fileProgress: 0,
+      totalProgress: 0,
     }));
 
+    let result: WalrusUploadResult;
+
     if (strategy === 'blockberry') {
-      // Use Blockberry HTTP API (current working approach)
-      const { blobId, previewBlobId } = await uploadViaBlockberry(
+      const blockberryResult = await uploadViaBlockberry(
         encryptedBlob,
         seal_policy_id,
-        metadata
+        metadata,
+        previewBlob
       );
 
-      // Upload preview blob if provided
-      let finalPreviewBlobId = previewBlobId;
-      if (previewBlob) {
-        try {
-          const previewFormData = new FormData();
-          previewFormData.append('file', previewBlob, 'preview.mp3');
-
-          const previewResponse = await fetch('/api/edge/walrus/preview', {
-            method: 'POST',
-            body: previewFormData,
-          });
-
-          if (previewResponse.ok) {
-            const previewResult = await previewResponse.json();
-            finalPreviewBlobId = previewResult.previewBlobId || previewResult.blobId;
-          } else {
-            console.warn('Preview upload failed, continuing without preview');
-          }
-        } catch (error) {
-          console.warn('Preview upload error:', error);
-        }
-      }
-
-      return {
-        blobId,
-        previewBlobId: finalPreviewBlobId,
+      result = {
+        ...blockberryResult,
         seal_policy_id,
         strategy: 'blockberry',
       };
     } else {
-      // Sponsored parallel upload (future implementation)
-      // This would use the sub-wallet orchestrator for parallel chunks
-      throw new Error(
-        'Sponsored parallel uploads not yet implemented. ' +
-        'Files ≥1GB require server-side transaction orchestration. ' +
-        'Please use Blockberry API or wait for SDK support.'
+      result = await uploadViaSponsoredPrototype(
+        encryptedBlob,
+        seal_policy_id,
+        metadata,
+        previewBlob
       );
     }
-  }, [uploadViaBlockberry]);
+
+    setProgress((prev) => ({
+      ...prev,
+      stage: 'finalizing',
+      fileProgress: Math.max(prev.fileProgress, 95),
+      totalProgress: Math.max(prev.totalProgress, 95),
+    }));
+
+    setProgress((prev) => ({
+      ...prev,
+      stage: 'completed',
+      fileProgress: 100,
+      totalProgress: 100,
+    }));
+
+    return result;
+  }, [uploadViaBlockberry, uploadViaSponsoredPrototype]);
 
   /**
    * Upload multiple files in parallel
@@ -143,7 +252,7 @@ export function useWalrusParallelUpload() {
     files: Array<{
       encryptedBlob: Blob;
       seal_policy_id: string;
-      metadata: any;
+      metadata: WalrusUploadMetadata;
       previewBlob?: Blob;
     }>
   ): Promise<WalrusUploadResult[]> => {
@@ -162,7 +271,7 @@ export function useWalrusParallelUpload() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
 
-      setProgress(prev => ({
+      setProgress((prev) => ({
         ...prev,
         currentFile: i,
         fileProgress: 0,
@@ -177,14 +286,14 @@ export function useWalrusParallelUpload() {
 
       results.push(result);
 
-      setProgress(prev => ({
+      setProgress((prev) => ({
         ...prev,
         completedFiles: i + 1,
         totalProgress: ((i + 1) / files.length) * 100,
       }));
     }
 
-    setProgress(prev => ({
+    setProgress((prev) => ({
       ...prev,
       stage: 'completed',
       totalProgress: 100,

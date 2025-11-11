@@ -3,9 +3,8 @@
  * Verifies upload strategy selection, parallel uploads, and error handling
  */
 
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { renderHook, waitFor } from '@testing-library/react';
-import { useWalrusParallelUpload } from '../useWalrusParallelUpload';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, mock } from 'bun:test';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 // Mock fetch globally
 const mockFetch = mock(() => Promise.resolve({
@@ -21,13 +20,29 @@ const mockFetch = mock(() => Promise.resolve({
 
 global.fetch = mockFetch as any;
 
+mock.module('@mysten/dapp-kit', () => ({
+  useCurrentAccount: () => ({ address: '0xdeadbeef' }),
+  useSuiClient: () => ({}),
+}));
+
+let useWalrusParallelUpload: typeof import('../useWalrusParallelUpload').useWalrusParallelUpload;
+
+beforeAll(async () => {
+  ({ useWalrusParallelUpload } = await import('../useWalrusParallelUpload'));
+});
+
 describe('useWalrusParallelUpload', () => {
   beforeEach(() => {
     mockFetch.mockClear();
   });
 
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE;
+  });
+
   describe('Strategy Selection', () => {
     it('should select blockberry strategy for files < 1GB', async () => {
+      delete process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE;
       const { result } = renderHook(() => useWalrusParallelUpload());
 
       const fileSize = 500 * 1024 * 1024; // 500 MB
@@ -48,17 +63,21 @@ describe('useWalrusParallelUpload', () => {
 
   describe('Single File Upload', () => {
     it('should upload a single file via Blockberry', async () => {
+      delete process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE;
       const { result } = renderHook(() => useWalrusParallelUpload());
 
       const encryptedBlob = new Blob(['test data'], { type: 'application/octet-stream' });
       const seal_policy_id = 'test-policy-id';
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
-      const uploadResult = await result.current.uploadBlob(
-        encryptedBlob,
-        seal_policy_id,
-        metadata
-      );
+      let uploadResult: any;
+      await act(async () => {
+        uploadResult = await result.current.uploadBlob(
+          encryptedBlob,
+          seal_policy_id,
+          metadata
+        );
+      });
 
       expect(uploadResult).toBeDefined();
       expect(uploadResult.blobId).toBe('test-blob-id');
@@ -90,12 +109,15 @@ describe('useWalrusParallelUpload', () => {
         }),
       }));
 
-      const uploadResult = await result.current.uploadBlob(
-        encryptedBlob,
-        seal_policy_id,
-        metadata,
-        previewBlob
-      );
+      let uploadResult: any;
+      await act(async () => {
+        uploadResult = await result.current.uploadBlob(
+          encryptedBlob,
+          seal_policy_id,
+          metadata,
+          previewBlob
+        );
+      });
 
       expect(uploadResult.previewBlobId).toBe('preview-blob-id');
       expect(mockFetch).toHaveBeenCalledTimes(2); // Main + preview
@@ -103,19 +125,8 @@ describe('useWalrusParallelUpload', () => {
   });
 
   describe('Error Handling', () => {
-    it('should throw error for sponsored-parallel strategy (not yet implemented)', async () => {
-      const { result } = renderHook(() => useWalrusParallelUpload());
-
-      const largeBlob = new Blob(['x'.repeat(1024 * 1024 * 1024 * 2)]); // 2 GB
-      const seal_policy_id = 'test-policy-id';
-      const metadata = { threshold: 2, accessPolicy: 'purchase' };
-
-      await expect(
-        result.current.uploadBlob(largeBlob, seal_policy_id, metadata)
-      ).rejects.toThrow('Sponsored parallel uploads not yet implemented');
-    });
-
     it('should handle upload failure gracefully', async () => {
+      delete process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE;
       const { result } = renderHook(() => useWalrusParallelUpload());
 
       mockFetch.mockImplementationOnce(() => Promise.resolve({
@@ -127,14 +138,17 @@ describe('useWalrusParallelUpload', () => {
       const seal_policy_id = 'test-policy-id';
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
-      await expect(
-        result.current.uploadBlob(encryptedBlob, seal_policy_id, metadata)
-      ).rejects.toThrow('Blockberry upload failed');
+      await act(async () => {
+        await expect(
+          result.current.uploadBlob(encryptedBlob, seal_policy_id, metadata)
+        ).rejects.toThrow('Blockberry upload failed');
+      });
     });
   });
 
   describe('Progress Tracking', () => {
     it('should track upload progress', async () => {
+      delete process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE;
       const { result } = renderHook(() => useWalrusParallelUpload());
 
       expect(result.current.progress.stage).toBe('encrypting');
@@ -144,17 +158,19 @@ describe('useWalrusParallelUpload', () => {
       const seal_policy_id = 'test-policy-id';
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
-      const uploadPromise = result.current.uploadBlob(
-        encryptedBlob,
-        seal_policy_id,
-        metadata
-      );
-
-      await waitFor(() => {
-        expect(result.current.progress.stage).toBe('uploading');
+      await act(async () => {
+        await result.current.uploadBlob(
+          encryptedBlob,
+          seal_policy_id,
+          metadata
+        );
       });
 
-      await uploadPromise;
+      await waitFor(() => {
+        expect(result.current.progress.stage).toBe('completed');
+      });
+
+      expect(result.current.progress.totalProgress).toBe(100);
     });
   });
 
@@ -175,6 +191,30 @@ describe('useWalrusParallelUpload', () => {
 
       expect(walletCount).toBeGreaterThan(0);
       expect(walletCount).toBeLessThanOrEqual(100); // Capped at 100
+    });
+
+    it('should execute sponsored prototype flow when threshold lowered', async () => {
+      process.env.NEXT_PUBLIC_SPONSORED_PROTOTYPE_MIN_SIZE = '0';
+
+      const { result } = renderHook(() => useWalrusParallelUpload());
+
+      const encryptedBlob = new Blob(['prototype data'], { type: 'application/octet-stream' });
+      const seal_policy_id = 'prototype-policy-id';
+      const metadata = { threshold: 2, accessPolicy: 'purchase' };
+
+      let uploadResult: any;
+      await act(async () => {
+        uploadResult = await result.current.uploadBlob(
+          encryptedBlob,
+          seal_policy_id,
+          metadata
+        );
+      });
+
+      expect(uploadResult.strategy).toBe('sponsored-parallel');
+      expect(uploadResult.prototypeMetadata).toBeDefined();
+      expect(uploadResult.prototypeMetadata?.chunkCount).toBeGreaterThan(0);
+      expect(mockFetch).toHaveBeenCalled();
     });
   });
 });
