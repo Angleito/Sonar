@@ -64,7 +64,14 @@ export interface WalrusUploadResult {
 }
 
 export interface VerificationStage {
-  name: 'quality' | 'copyright' | 'transcription' | 'analysis' | 'finalizing' | 'completed';
+  name:
+    | 'quality'
+    | 'copyright'
+    | 'transcription'
+    | 'analysis'
+    | 'safety'
+    | 'finalizing'
+    | 'completed';
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
   progress: number; // 0-100
   message?: string;
