@@ -295,8 +295,8 @@ fun test_tier_boundary_at_40m() {
 1. **Recipient Addresses** – Need clarity on exact multisig / custody accounts for each allocation bucket.
 2. **Treasury Unlock Mechanism** – Decide between on-chain time lock vs. off-chain custody for the 15M treasury tranche.
 3. **Contributor Reserve Top-Up Rules** – Define if / when treasury reallocations can replenish the reserve once purchase flow is self-sustaining.
-4. **Spam Fee Destination** – Confirm that submission burn fees should be destroyed rather than recycled (current assumption).
+4. **Spam Fee Destination** – Confirm that submission burn fees should be destroyed rather than recycled (currently going to be burned)
 5. **Launch Analytics** – Decide whether to surface both circulating and remaining supply in events / indexers for real-time tier tracking.
 
-Once these items are resolved the document should be versioned 1.0 and locked before the production audit cycle.
+
 
