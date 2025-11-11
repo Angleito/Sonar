@@ -26,7 +26,7 @@ export async function verifyUserOwnsDataset(
   userAddress: string,
   datasetId: string,
   suiClient: SuiClient,
-  packageId: string
+  packageId: string | null
 ): Promise<boolean> {
   const cacheKey = `${userAddress}:${datasetId}`;
 
@@ -62,7 +62,7 @@ async function queryPurchaseEvents(
   userAddress: string,
   datasetId: string,
   suiClient: SuiClient,
-  packageId: string
+  packageId: string | null
 ): Promise<boolean> {
   // Mock mode for dev (package ID not configured)
   if (!packageId || packageId === '0x0') {
