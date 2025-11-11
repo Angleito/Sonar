@@ -92,8 +92,14 @@ export function useSeal() {
   const restoreSessionFromCache = useCallback(async () => {
     if (!sealClient || !hasKeyServersConfigured) return;
 
+    const packageId = CHAIN_CONFIG.packageId;
+    if (!packageId) {
+      console.warn('Cannot restore Seal session: CHAIN_CONFIG.packageId is missing');
+      return;
+    }
+
     try {
-      const cached = await restoreSession(CHAIN_CONFIG.packageId ?? undefined, suiClient as SuiClient);
+      const cached = await restoreSession(packageId, suiClient as SuiClient);
       if (cached && isSessionValid(cached)) {
         console.log('Restored Seal session from cache');
         setSessionKey(cached);
