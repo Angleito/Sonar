@@ -48,7 +48,7 @@ Verify a signed message and get JWT token.
 **Response:**
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": "<JWT_TOKEN_PLACEHOLDER>",
   "expiresAt": 1704197100000
 }
 ```

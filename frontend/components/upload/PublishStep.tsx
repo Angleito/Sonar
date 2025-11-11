@@ -14,6 +14,7 @@ import {
 } from '@/lib/types/upload';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { CHAIN_CONFIG } from '@/lib/sui/client';
 
 /**
  * Convert Uint8Array to base64 string (browser-safe)
@@ -34,8 +35,6 @@ interface PublishStepProps {
   onError: (error: string) => void;
 }
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_SUI_PACKAGE_ID || '';
-const MARKETPLACE_ID = process.env.NEXT_PUBLIC_SUI_MARKETPLACE_ID || '';
 const BURN_FEE_PERCENTAGE = 0.00001; // 0.001% of circulating supply
 
 /**
@@ -63,6 +62,14 @@ export function PublishStep({
     try {
       setPublishState('signing');
 
+      if (!CHAIN_CONFIG.packageId || !CHAIN_CONFIG.marketplaceId) {
+        onError(
+          `Blockchain configuration missing required IDs: ${CHAIN_CONFIG.missingKeys.join(', ') || 'PACKAGE_ID / MARKETPLACE_ID'}`
+        );
+        setPublishState('idle');
+        return;
+      }
+
       // Build transaction
       const tx = new Transaction();
 
@@ -82,9 +89,9 @@ export function PublishStep({
         const durations = files.map(f => Math.floor(f.duration)); // Convert to u64
 
         tx.moveCall({
-          target: `${PACKAGE_ID}::marketplace::submit_audio_dataset`,
+          target: `${CHAIN_CONFIG.packageId}::marketplace::submit_audio_dataset`,
           arguments: [
-            tx.object(MARKETPLACE_ID),
+            tx.object(CHAIN_CONFIG.marketplaceId),
             tx.splitCoins(tx.gas, [burnFee])[0], // burn_fee
             tx.pure.vector('string', blobIds),
             tx.pure.vector('string', previewBlobIds),
@@ -96,9 +103,9 @@ export function PublishStep({
       } else {
         // Single file: Call submit_audio (backwards compatibility)
         tx.moveCall({
-          target: `${PACKAGE_ID}::marketplace::submit_audio`,
+          target: `${CHAIN_CONFIG.packageId}::marketplace::submit_audio`,
           arguments: [
-            tx.object(MARKETPLACE_ID),
+            tx.object(CHAIN_CONFIG.marketplaceId),
             tx.pure.string(walrusUpload.blobId),
             tx.pure.string(walrusUpload.seal_policy_id), // Seal policy ID for decryption
             tx.pure.option('vector<u8>', null), // preview_blob_hash (optional)
@@ -184,12 +191,23 @@ export function PublishStep({
                     duration_seconds: 3600, // Placeholder for single-file backwards compat
                   }];
 
+              // Include verification metadata
+              const verificationMetadata = verification ? {
+                verification_id: verification.id,
+                quality_score: verification.qualityScore,
+                safety_passed: verification.safetyPassed,
+                verified_at: new Date().toISOString(),
+              } : null;
+
               const metadataResponse = await fetch(`/api/datasets/${datasetId}/seal-metadata`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ files }),
+                body: JSON.stringify({
+                  files,
+                  verification: verificationMetadata,
+                }),
               });
 
               if (!metadataResponse.ok) {

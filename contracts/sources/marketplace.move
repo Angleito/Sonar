@@ -15,6 +15,8 @@ module sonar::marketplace {
     use sonar::sonar_token::SONAR_TOKEN;
     use sonar::economics::{Self, EconomicConfig};
     use sonar::purchase_policy;
+    use sonar::verification_session::{Self, VerificationSession, SessionRegistry};
+    use sonar::storage_lease::{Self, LeaseRegistry};
 
     // ========== Error Codes ==========
 
@@ -1038,6 +1040,128 @@ module sonar::marketplace {
         });
     }
 
+
+    // ========== Verification Session Integration ==========
+
+    /// Finalize submission from a verified session
+    /// Creates AudioSubmission and StorageLease after verification completes
+    public entry fun finalize_submission_from_session(
+        marketplace: &mut QualityMarketplace,
+        session: &mut VerificationSession,
+        session_registry: &mut SessionRegistry,
+        lease_registry: &mut LeaseRegistry,
+        burn_fee: Coin<SONAR_TOKEN>,
+        lease_duration_epochs: u64,
+        dataset_price: u64,
+        ctx: &mut TxContext
+    ) {
+        // Circuit breaker check
+        assert!(
+            !is_circuit_breaker_active(&marketplace.circuit_breaker, ctx),
+            E_CIRCUIT_BREAKER_ACTIVE
+        );
+
+        // Validate session is encrypted and approved
+        assert!(verification_session::is_encrypted(session), E_NOT_APPROVED);
+        assert!(verification_session::is_approved(session), E_NOT_APPROVED);
+
+        // Validate ownership
+        let uploader = tx_context::sender(ctx);
+        assert!(verification_session::owner(session) == uploader, E_UNAUTHORIZED);
+
+        // Extract session data
+        let encrypted_cid = *option::borrow(&verification_session::encrypted_cid(session));
+        let preview_cid = *option::borrow(&verification_session::preview_cid(session));
+        let seal_policy_id = *option::borrow(&verification_session::seal_policy_id(session));
+        let quality_score = verification_session::quality_score(session);
+        let duration_seconds = verification_session::duration_seconds(session);
+        let capacity_bytes = verification_session::plaintext_size_bytes(session);
+
+        // Calculate required burn fee
+        let circulating = get_circulating_supply(marketplace);
+        let required_fee = economics::calculate_burn_fee(circulating);
+        let paid_fee = coin::value(&burn_fee);
+        assert!(paid_fee >= required_fee, E_INVALID_BURN_FEE);
+
+        // Burn submission fee
+        let burn_balance = coin::into_balance(burn_fee);
+        balance::decrease_supply(
+            coin::supply_mut(&mut marketplace.treasury_cap),
+            burn_balance
+        );
+        marketplace.total_burned = marketplace.total_burned + paid_fee;
+
+        // Calculate quality reward
+        let reward_amount = economics::calculate_reward(circulating, quality_score);
+        let pool_balance = balance::value(&marketplace.reward_pool);
+        assert!(pool_balance >= reward_amount, E_REWARD_POOL_DEPLETED);
+
+        // Reserve reward in pool (will vest over 90 epochs)
+        marketplace.reward_pool_allocated = marketplace.reward_pool_allocated + reward_amount;
+
+        // Create submission
+        let submission_id = object::new(ctx);
+        let submission_id_copy = object::uid_to_inner(&submission_id);
+        let current_epoch = tx_context::epoch(ctx);
+
+        let submission = AudioSubmission {
+            id: submission_id,
+            uploader,
+            walrus_blob_id: encrypted_cid,
+            preview_blob_id: preview_cid,
+            seal_policy_id,
+            preview_blob_hash: option::none(),
+            duration_seconds,
+            quality_score,
+            status: 1,  // 1 = approved
+            vested_balance: VestedBalance {
+                total_amount: reward_amount,
+                unlock_start_epoch: current_epoch,
+                unlock_duration_epochs: 90,
+                claimed_amount: 0
+            },
+            unlocked_balance: 0,
+            dataset_price,
+            listed_for_sale: (dataset_price > 0),
+            purchase_count: 0,
+            submitted_at_epoch: current_epoch
+        };
+
+        marketplace.total_submissions = marketplace.total_submissions + 1;
+
+        // Link session to submission
+        verification_session::link_submission(
+            session,
+            submission_id_copy,
+            session_registry,
+            ctx
+        );
+
+        // Create storage lease (no additional fee - submission fee covers storage)
+        storage_lease::create_lease(
+            lease_registry,
+            submission_id_copy,
+            encrypted_cid,
+            string::utf8(b""), // walrus_deal_id (empty for now, can be set by Walrus oracle)
+            capacity_bytes,
+            lease_duration_epochs,
+            ctx
+        );
+
+        // Emit event
+        event::emit(SubmissionFinalized {
+            submission_id: submission_id_copy,
+            uploader,
+            quality_score,
+            status: 1,
+            reward_amount,
+            vesting_start_epoch: current_epoch,
+            vesting_duration_epochs: 90
+        });
+
+        // Transfer submission to uploader
+        transfer::transfer(submission, uploader);
+    }
 
     // ========== View Functions ==========
 

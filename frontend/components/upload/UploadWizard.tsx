@@ -22,8 +22,8 @@ interface UploadWizardProps {
 const STEPS: UploadStep[] = [
   'file-upload',
   'metadata',
+  'verification', // Moved before encryption - verify raw audio first!
   'encryption',
-  'verification',
   'publish',
   'success',
 ];
@@ -31,8 +31,8 @@ const STEPS: UploadStep[] = [
 const STEP_TITLES: Record<UploadStep, string> = {
   'file-upload': 'Upload Audio',
   'metadata': 'Dataset Details',
+  'verification': 'AI Verification', // Now runs before encryption
   'encryption': 'Encrypting',
-  'verification': 'AI Verification',
   'publish': 'Publish to Blockchain',
   'success': 'Success!',
 };
@@ -245,6 +245,19 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
                 />
               )}
 
+              {state.step === 'verification' && (
+                <VerificationStep
+                  audioFile={state.audioFile!}
+                  audioFiles={state.audioFiles}
+                  metadata={state.metadata!}
+                  onVerificationComplete={(verification) => {
+                    setState((prev) => ({ ...prev, verification }));
+                    goToNextStep();
+                  }}
+                  onError={(error) => setState((prev) => ({ ...prev, error }))}
+                />
+              )}
+
               {state.step === 'encryption' && (
                 <EncryptionStep
                   audioFile={state.audioFile!}
@@ -269,31 +282,6 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
                     goToNextStep();
                   }}
                   onError={(error) => setState((prev) => ({ ...prev, error }))}
-                />
-              )}
-
-              {state.step === 'verification' && (
-                <VerificationStep
-                  walrusUpload={state.walrusUpload!}
-                  metadata={state.metadata!}
-                  onVerificationComplete={(verification) => {
-                    setState((prev) => ({ ...prev, verification }));
-                  }}
-                  onSkip={() => {
-                    setState((prev) => ({
-                      ...prev,
-                      verification: {
-                        id: 'skipped',
-                        state: 'completed',
-                        currentStage: 'safety',
-                        stages: [],
-                        safetyPassed: true,
-                        updatedAt: Date.now(),
-                      },
-                    }));
-                    goToNextStep();
-                  }}
-                  onContinue={goToNextStep}
                 />
               )}
 

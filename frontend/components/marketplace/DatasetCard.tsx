@@ -34,11 +34,12 @@ export function DatasetCard({ dataset, onPurchase }: DatasetCardProps) {
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Use direct preview URL if available, otherwise use backend endpoint
-  const previewUrl = dataset.previewUrl || getPreviewUrl(dataset.id);
+  const previewBlobUrl = dataset.preview_blob_id ? getPreviewUrl(dataset.preview_blob_id) : undefined;
+  const previewUrl = dataset.previewUrl ?? previewBlobUrl ?? '';
 
   // Debug: Log preview URL source
-  if (typeof window !== 'undefined' && !dataset.previewUrl) {
-    console.log(`Dataset ${dataset.id} missing previewUrl, using backend fallback`);
+  if (typeof window !== 'undefined' && !dataset.previewUrl && !dataset.preview_blob_id) {
+    console.warn(`Dataset ${dataset.id} missing preview preview_blob_id; audio preview may be unavailable.`);
   }
 
   // Initialize waveform hook for audio preview

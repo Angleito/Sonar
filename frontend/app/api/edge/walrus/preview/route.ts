@@ -109,3 +109,51 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * Edge Function: Walrus Preview Proxy
+ * Streams preview audio blobs via CDN-friendly caching headers
+ *
+ * GET /api/edge/walrus/preview?blobId=<preview_blob_id>
+ */
+export async function GET(request: NextRequest) {
+  const { searchParams } = request.nextUrl;
+  const blobId = searchParams.get('blobId');
+
+  if (!blobId) {
+    return NextResponse.json({ error: 'Missing blobId' }, { status: 400 });
+  }
+
+  try {
+    const walrusUrl = `${WALRUS_AGGREGATOR_URL}/v1/${blobId}`;
+    const response = await fetch(walrusUrl);
+
+    if (!response.ok || !response.body) {
+      const details = response.statusText || `HTTP ${response.status}`;
+      console.error(`[WalrusPreview] Failed to fetch blob ${blobId}: ${details}`);
+      return NextResponse.json(
+        { error: 'Failed to fetch preview from Walrus', details },
+        { status: response.status }
+      );
+    }
+
+    return new NextResponse(response.body, {
+      status: response.status,
+      headers: {
+        'Content-Type': response.headers.get('Content-Type') || 'audio/mpeg',
+        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=300',
+        'Access-Control-Allow-Origin': '*',
+        'X-Preview-Blob-Id': blobId,
+      },
+    });
+  } catch (error) {
+    console.error('[WalrusPreview] Error fetching blob:', error);
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
+}

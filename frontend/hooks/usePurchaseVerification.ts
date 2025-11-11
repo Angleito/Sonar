@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
-import { suiClient, PACKAGE_ID } from '@/lib/sui/client';
+import { suiClient, CHAIN_CONFIG } from '@/lib/sui/client';
 import { verifyUserOwnsDataset, clearPurchaseCacheEntry } from '@/lib/sui/purchase-verification';
 
 /**
@@ -32,7 +32,7 @@ export function usePurchaseVerification() {
           account.address,
           datasetId,
           suiClient,
-          PACKAGE_ID
+          CHAIN_CONFIG.packageId ?? ''
         );
 
         return owns;

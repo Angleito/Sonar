@@ -42,7 +42,7 @@ export async function verifyUserOwnsDataset(
     const owns = await queryPurchaseEvents(userAddress, datasetId, suiClient, packageId);
 
     // Cache result
-    setCacheResult(cacheKey, owns);
+    setCacheResult(cacheKey, owns, owns ? 5 * 60 * 1000 : 30 * 1000);
     return owns;
   } catch (error) {
     console.error('[PurchaseVerification] Verification failed:', error);
@@ -55,6 +55,9 @@ export async function verifyUserOwnsDataset(
  * Query DatasetPurchased events for a user and dataset
  * Returns true if purchase event found
  */
+const MAX_EVENT_PAGES = 10;
+const EVENTS_PAGE_SIZE = 100;
+
 async function queryPurchaseEvents(
   userAddress: string,
   datasetId: string,
@@ -70,33 +73,45 @@ async function queryPurchaseEvents(
   try {
     // Query events from blockchain
     // Event type: {PACKAGE_ID}::marketplace::DatasetPurchased
-    const events = await suiClient.queryEvents({
-      query: {
-        MoveEventType: `${packageId}::marketplace::DatasetPurchased`,
-      },
-      limit: 100,
-    });
+    let cursor: string | null = null;
+    const normalizedBuyer = userAddress.toLowerCase();
 
-    console.log(`[PurchaseVerification] Queried ${events.data.length} purchase events`);
+    for (let page = 0; page < MAX_EVENT_PAGES; page++) {
+      const events = await suiClient.queryEvents({
+        query: {
+          MoveEventType: `${packageId}::marketplace::DatasetPurchased`,
+        },
+        cursor,
+        limit: EVENTS_PAGE_SIZE,
+        order: 'descending',
+      });
 
-    // Check if any event matches user and dataset
-    for (const event of events.data) {
-      if (event.parsedJson) {
-        const json = event.parsedJson as Record<string, unknown>;
-        const buyer = json['buyer'] as string | undefined;
-        const submissionId = json['submission_id'] as string | undefined;
+      console.log(
+        `[PurchaseVerification] Queried ${events.data.length} purchase events (page ${page + 1})`
+      );
 
-        if (
-          buyer?.toLowerCase() === userAddress.toLowerCase() &&
-          submissionId === datasetId
-        ) {
-          console.log('[PurchaseVerification] Purchase verified on blockchain:', {
-            buyer,
-            datasetId: submissionId,
-          });
-          return true;
+      // Check if any event matches user and dataset
+      for (const event of events.data) {
+        if (event.parsedJson) {
+          const json = event.parsedJson as Record<string, unknown>;
+          const buyer = json['buyer'] as string | undefined;
+          const submissionId = json['submission_id'] as string | undefined;
+
+          if (buyer?.toLowerCase() === normalizedBuyer && submissionId === datasetId) {
+            console.log('[PurchaseVerification] Purchase verified on blockchain:', {
+              buyer,
+              datasetId: submissionId,
+            });
+            return true;
+          }
         }
       }
+
+      if (!events.hasNextPage || !events.nextCursor) {
+        break;
+      }
+
+      cursor = events.nextCursor;
     }
 
     console.log('[PurchaseVerification] No purchase event found for:', {

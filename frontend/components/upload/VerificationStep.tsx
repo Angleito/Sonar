@@ -1,215 +1,291 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Shield, FileText, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { motion } from 'framer-motion';
+import { Brain, Shield, FileText, CheckCircle, AlertCircle, Clock, Music, Copyright } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  WalrusUploadResult,
   DatasetMetadata,
   VerificationResult,
   VerificationStage,
+  AudioFile,
 } from '@/lib/types/upload';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { RadarScanTarget } from '@/components/animations/RadarScanTarget';
 
 interface VerificationStepProps {
-  walrusUpload: WalrusUploadResult;
+  audioFile: AudioFile;
+  audioFiles: AudioFile[];
   metadata: DatasetMetadata;
   onVerificationComplete: (result: VerificationResult) => void;
-  onSkip: () => void;
-  onContinue: () => void;
+  onError: (error: string) => void;
+}
+
+interface StageInfo {
+  name: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  progress: number;
 }
 
 /**
  * VerificationStep Component
- * Shows AI verification progress with option to skip
+ * Mandatory AI verification before encryption using audio-verifier service
  */
 export function VerificationStep({
-  walrusUpload,
+  audioFile,
+  audioFiles,
   metadata,
   onVerificationComplete,
-  onSkip,
-  onContinue,
+  onError,
 }: VerificationStepProps) {
   const [verificationState, setVerificationState] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
-  const [stages, setStages] = useState<VerificationStage[]>([
+  const [verificationId, setVerificationId] = useState<string | null>(null);
+  const [stages, setStages] = useState<StageInfo[]>([
+    { name: 'quality', status: 'pending', progress: 0 },
+    { name: 'copyright', status: 'pending', progress: 0 },
     { name: 'transcription', status: 'pending', progress: 0 },
     { name: 'analysis', status: 'pending', progress: 0 },
-    { name: 'safety', status: 'pending', progress: 0 },
   ]);
   const [result, setResult] = useState<VerificationResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<any>(null);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hasStartedRef = useRef(false); // Guard against React 18 Strict Mode double-mount
+
+  // Auto-start verification when component mounts
+  useEffect(() => {
+    // Prevent duplicate requests in React 18 Strict Mode
+    if (hasStartedRef.current) {
+      return;
+    }
+
+    hasStartedRef.current = true;
+    startVerification();
+
+    // Cleanup polling on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startVerification = async () => {
     setVerificationState('running');
+    setErrorMessage(null);
+    setErrorDetails(null);
+
+    // Use audioFiles if available (multi-file), otherwise fall back to single audioFile
+    const filesToVerify = audioFiles.length > 0 ? audioFiles : [audioFile];
+    setTotalFiles(filesToVerify.length);
+    setCurrentFileIndex(0);
+
+    // Verify files sequentially
+    await verifyNextFile(filesToVerify, 0);
+  };
+
+  const verifyNextFile = async (files: AudioFile[], fileIndex: number) => {
+    if (fileIndex >= files.length) {
+      // All files verified successfully
+      const finalResult: VerificationResult = {
+        id: verificationId || 'multi-file-verification',
+        state: 'completed',
+        currentStage: 'completed',
+        stages: [
+          { name: 'quality', status: 'completed', progress: 100 },
+          { name: 'copyright', status: 'completed', progress: 100 },
+          { name: 'transcription', status: 'completed', progress: 100 },
+          { name: 'analysis', status: 'completed', progress: 100 },
+        ],
+        qualityScore: 1.0, // Overall pass
+        safetyPassed: true,
+        insights: [`Successfully verified ${files.length} file(s)`],
+        updatedAt: Date.now(),
+      };
+      setResult(finalResult);
+      setVerificationState('completed');
+      onVerificationComplete(finalResult);
+      return;
+    }
+
+    setCurrentFileIndex(fileIndex);
+
+    // Reset stages for current file
+    setStages([
+      { name: 'quality', status: 'pending', progress: 0 },
+      { name: 'copyright', status: 'pending', progress: 0 },
+      { name: 'transcription', status: 'pending', progress: 0 },
+      { name: 'analysis', status: 'pending', progress: 0 },
+    ]);
 
     try {
-      // TODO: Call Edge Function to start verification
-      // const response = await fetch('/api/edge/verify', {
-      //   method: 'POST',
-      //   body: JSON.stringify({ walrusBlobId: walrusUpload.blobId, metadata }),
-      // });
-      // const { verificationId } = await response.json();
+      // Prepare form data with raw audio file (BEFORE encryption!)
+      const formData = new FormData();
+      formData.append('file', files[fileIndex].file);
+      formData.append('metadata', JSON.stringify(metadata));
 
-      // Simulate verification process
-      await simulateVerification();
+      // Call server-side API (proxies to audio-verifier with secure token)
+      const response = await fetch('/api/verify', {
+        method: 'POST',
+        body: formData,
+      });
 
-    } catch (error) {
-      console.error('Verification failed:', error);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const { verificationId: id } = data;
+
+      setVerificationId(id);
+
+      // Start polling for verification status
+      startPolling(id, files, fileIndex);
+
+    } catch (error: any) {
+      console.error('Failed to start verification:', error);
+      setErrorMessage(error.message || 'Failed to start verification');
       setVerificationState('failed');
+      onError(error.message || 'Verification failed to start');
     }
   };
 
-  const simulateVerification = async () => {
-    // Stage 1: Transcription
-    updateStage('transcription', 'in_progress');
-    await simulateStageProgress('transcription', 5000);
-    updateStage('transcription', 'completed', 100);
+  const startPolling = (id: string, files: AudioFile[], fileIndex: number) => {
+    // Poll every 2 seconds
+    const interval = setInterval(async () => {
+      try {
+        // Call server-side API (proxies to audio-verifier with secure token)
+        const response = await fetch(`/api/verify/${id}`);
 
-    // Stage 2: Analysis
-    updateStage('analysis', 'in_progress');
-    await simulateStageProgress('analysis', 4000);
-    updateStage('analysis', 'completed', 100);
+        if (!response.ok) {
+          throw new Error(`Failed to poll verification: ${response.status}`);
+        }
 
-    // Stage 3: Safety
-    updateStage('safety', 'in_progress');
-    await simulateStageProgress('safety', 3000);
-    updateStage('safety', 'completed', 100);
+        const session = await response.json();
 
-    // Complete
-    const mockResult: VerificationResult = {
-      id: `verify_${Date.now()}`,
-      state: 'completed',
-      currentStage: 'safety',
-      stages,
-      transcript: 'This is a sample transcript of the audio content...',
-      qualityScore: 0.87,
-      safetyPassed: true,
-      insights: [
-        'Clear audio with minimal background noise',
-        'Natural conversational tone detected',
-        'Appropriate for general audiences',
-      ],
-      updatedAt: Date.now(),
-    };
+        // Update stages based on current stage
+        updateStagesFromSession(session);
 
-    setResult(mockResult);
-    setVerificationState('completed');
-    onVerificationComplete(mockResult);
+        // Check if completed or failed
+        if (session.state === 'completed') {
+          clearInterval(interval);
+          pollingIntervalRef.current = null;
+
+          // Check if approved
+          if (!session.approved) {
+            // Verification failed validation
+            setVerificationState('failed');
+            setErrorMessage('Verification failed quality, copyright, or safety checks');
+            setErrorDetails(session);
+            onError('Verification checks failed');
+            return;
+          }
+
+          // This file passed, move to next file
+          await verifyNextFile(files, fileIndex + 1);
+
+        } else if (session.state === 'failed') {
+          clearInterval(interval);
+          pollingIntervalRef.current = null;
+
+          setVerificationState('failed');
+          setErrorMessage(session.errors?.[0] || 'Verification failed');
+          setErrorDetails(session);
+          onError(session.errors?.[0] || 'Verification failed');
+        }
+
+      } catch (error: any) {
+        console.error('Polling error:', error);
+        // Don't fail immediately on polling errors, keep trying
+      }
+    }, 2000);
+
+    pollingIntervalRef.current = interval;
   };
 
-  const updateStage = (
-    stageName: VerificationStage['name'],
-    status: VerificationStage['status'],
-    progress: number = 0
-  ) => {
+  const updateStagesFromSession = (session: any) => {
+    const currentStage = session.stage;
+    const progress = session.progress || 0;
+
+    const stageOrder = ['quality', 'copyright', 'transcription', 'analysis'];
+    const currentIndex = stageOrder.indexOf(currentStage);
+
     setStages((prev) =>
-      prev.map((stage) =>
-        stage.name === stageName ? { ...stage, status, progress } : stage
-      )
+      prev.map((stage, idx) => {
+        if (idx < currentIndex) {
+          return { ...stage, status: 'completed', progress: 100 };
+        } else if (stage.name === currentStage) {
+          return { ...stage, status: 'in_progress', progress: Math.round(progress * 100) };
+        } else {
+          return { ...stage, status: 'pending', progress: 0 };
+        }
+      })
     );
   };
 
-  const simulateStageProgress = async (
-    stageName: VerificationStage['name'],
-    duration: number
-  ) => {
-    const steps = 20;
-    const stepDuration = duration / steps;
-
-    for (let i = 0; i <= steps; i++) {
-      await new Promise((resolve) => setTimeout(resolve, stepDuration));
-      const progress = (i / steps) * 100;
-      updateStage(stageName, 'in_progress', progress);
-    }
-  };
-
   const stageConfig = {
+    quality: {
+      icon: <Music className="w-5 h-5" />,
+      label: 'Quality Check',
+      description: 'Analyzing audio quality, sample rate, and volume levels',
+    },
+    copyright: {
+      icon: <Copyright className="w-5 h-5" />,
+      label: 'Copyright Detection',
+      description: 'Checking for copyrighted content using fingerprinting',
+    },
     transcription: {
       icon: <FileText className="w-5 h-5" />,
       label: 'Transcription',
-      description: 'Converting audio to text using Whisper AI',
+      description: 'Converting audio to text using Gemini AI',
     },
     analysis: {
       icon: <Brain className="w-5 h-5" />,
-      label: 'Quality Analysis',
-      description: 'Analyzing audio quality and content with Claude',
-    },
-    safety: {
-      icon: <Shield className="w-5 h-5" />,
-      label: 'Safety Screening',
-      description: 'Checking for inappropriate or harmful content',
+      label: 'AI Analysis',
+      description: 'Analyzing quality, safety, and content value',
     },
   };
 
   return (
     <div className="space-y-6">
-      {/* Verification Choice (Idle State) */}
-      {verificationState === 'idle' && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
-        >
-          <GlassCard className="text-center py-8">
-            <div className="flex justify-center mb-4">
-              <div className="p-6 rounded-full bg-sonar-signal/10">
-                <Brain className="w-12 h-12 text-sonar-signal" />
-              </div>
-            </div>
-
-            <h3 className="text-2xl font-mono font-bold text-sonar-highlight-bright mb-3">
-              AI Verification (Optional)
-            </h3>
-            <p className="text-sonar-highlight/70 max-w-2xl mx-auto mb-6">
-              Our AI will analyze your dataset for quality, transcription, and safety.
-              This helps buyers trust your dataset and can increase its value.
-            </p>
-
-            <div className="flex items-center justify-center gap-4">
-              <SonarButton variant="secondary" onClick={onSkip}>
-                Skip Verification
-              </SonarButton>
-              <SonarButton variant="primary" onClick={startVerification}>
-                Start Verification
-              </SonarButton>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="bg-sonar-blue/5">
-            <div className="text-sm text-sonar-highlight/80 space-y-3">
-              <p className="font-mono font-semibold text-sonar-blue">
-                Why verify your dataset?
-              </p>
-              <ul className="space-y-2 list-disc list-inside">
-                <li>Builds trust with potential buyers</li>
-                <li>Provides quality metrics and insights</li>
-                <li>Ensures content safety compliance</li>
-                <li>Generates automatic transcription</li>
-              </ul>
-              <p className="text-xs text-sonar-highlight/50 pt-2">
-                Verification typically takes 1-2 minutes depending on audio length
-              </p>
-            </div>
-          </GlassCard>
-        </motion.div>
-      )}
-
-      {/* Verification in Progress */}
-      {verificationState === 'running' && (
+      {/* Verification Running */}
+      {(verificationState === 'idle' || verificationState === 'running') && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="space-y-6"
         >
+          {/* Header */}
+          <GlassCard className="text-center py-6">
+            <div className="flex justify-center mb-4">
+              <div className="p-6 rounded-full bg-sonar-signal/10">
+                <Brain className="w-12 h-12 text-sonar-signal" />
+              </div>
+            </div>
+            <h3 className="text-2xl font-mono font-bold text-sonar-highlight-bright mb-2">
+              Verifying Audio Quality
+            </h3>
+            <p className="text-sonar-highlight/70 max-w-2xl mx-auto">
+              Running comprehensive checks on your audio before encryption
+            </p>
+            {totalFiles > 1 && (
+              <p className="text-sm text-sonar-signal mt-2 font-mono">
+                File {currentFileIndex + 1} of {totalFiles}
+              </p>
+            )}
+          </GlassCard>
+
           {/* Radar Animation */}
-          <div className="flex justify-center py-8">
-            <div className="relative w-64 h-64">
+          <div className="flex justify-center py-6">
+            <div className="relative w-48 h-48">
               <RadarScanTarget
                 src="/images/walrus-icon.png"
                 alt="Verification in Progress"
-                size={256}
+                size={192}
               />
             </div>
           </div>
@@ -217,7 +293,7 @@ export function VerificationStep({
           {/* Stage Progress */}
           <div className="space-y-3">
             {stages.map((stage) => {
-              const config = stageConfig[stage.name];
+              const config = stageConfig[stage.name as keyof typeof stageConfig];
               const isCompleted = stage.status === 'completed';
               const isActive = stage.status === 'in_progress';
               const isPending = stage.status === 'pending';
@@ -287,9 +363,9 @@ export function VerificationStep({
 
           <GlassCard className="bg-sonar-blue/5 text-center">
             <div className="flex items-center justify-center space-x-2 text-sonar-highlight/70">
-              <Clock className="w-4 h-4" />
+              <Clock className="w-4 h-4 animate-pulse" />
               <p className="text-sm font-mono">
-                This may take 1-2 minutes...
+                This may take 30-60 seconds...
               </p>
             </div>
           </GlassCard>
@@ -311,13 +387,13 @@ export function VerificationStep({
                   Verification Complete!
                 </h3>
                 <p className="text-sm text-sonar-highlight/70">
-                  Your dataset has been successfully analyzed
+                  Your audio passed all quality and safety checks
                 </p>
               </div>
             </div>
 
             {/* Quality Score */}
-            {result.qualityScore && (
+            {result.qualityScore !== undefined && (
               <div className="mt-4 p-4 rounded-sonar bg-sonar-abyss/30">
                 <p className="text-sm font-mono text-sonar-highlight/70 mb-2">
                   Quality Score
@@ -355,11 +431,11 @@ export function VerificationStep({
             )}
           </GlassCard>
 
-          <div className="flex justify-end">
-            <SonarButton variant="primary" onClick={onContinue}>
-              Continue to Publish →
-            </SonarButton>
-          </div>
+          <GlassCard className="bg-sonar-blue/5">
+            <p className="text-sm text-sonar-highlight/70 text-center">
+              ✓ Your audio has been verified and is ready for encryption
+            </p>
+          </GlassCard>
         </motion.div>
       )}
 
@@ -368,6 +444,7 @@ export function VerificationStep({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          className="space-y-6"
         >
           <GlassCard className="bg-sonar-coral/10 border border-sonar-coral">
             <div className="flex items-center space-x-4 mb-4">
@@ -377,18 +454,76 @@ export function VerificationStep({
                   Verification Failed
                 </h3>
                 <p className="text-sm text-sonar-highlight/70">
-                  Unable to complete AI verification
+                  {errorMessage || 'Your audio did not pass verification checks'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 mt-6">
-              <SonarButton variant="secondary" onClick={startVerification}>
-                Retry Verification
-              </SonarButton>
-              <SonarButton variant="primary" onClick={onSkip}>
-                Continue Without Verification
-              </SonarButton>
+            {/* Error Details */}
+            {errorDetails && (
+              <div className="mt-4 space-y-3">
+                {errorDetails.quality && !errorDetails.quality.passed && (
+                  <div className="p-3 rounded-sonar bg-sonar-abyss/30">
+                    <p className="font-mono font-semibold text-sonar-coral mb-2">
+                      Quality Issues:
+                    </p>
+                    <ul className="text-sm text-sonar-highlight/70 space-y-1">
+                      {errorDetails.errors?.map((error: string, idx: number) => (
+                        <li key={idx} className="flex items-start space-x-2">
+                          <span>•</span>
+                          <span>{error}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {errorDetails.copyright?.high_confidence_match && (
+                  <div className="p-3 rounded-sonar bg-sonar-abyss/30">
+                    <p className="font-mono font-semibold text-sonar-coral mb-2">
+                      Copyright Detected:
+                    </p>
+                    <p className="text-sm text-sonar-highlight/70">
+                      {errorDetails.copyright.best_match?.title}
+                      {errorDetails.copyright.best_match?.artist &&
+                        ` by ${errorDetails.copyright.best_match.artist}`}
+                    </p>
+                    <p className="text-xs text-sonar-highlight/50 mt-1">
+                      Confidence: {(errorDetails.copyright.best_match?.confidence * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                )}
+
+                {errorDetails.analysis && !errorDetails.safetyPassed && (
+                  <div className="p-3 rounded-sonar bg-sonar-abyss/30">
+                    <p className="font-mono font-semibold text-sonar-coral mb-2">
+                      Content Safety Issue
+                    </p>
+                    <p className="text-sm text-sonar-highlight/70">
+                      Audio content was flagged for inappropriate material
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Recovery Actions */}
+            <div className="flex flex-col gap-3 mt-6">
+              <p className="text-sm text-sonar-highlight/70">
+                You can try again with a different file or adjust your audio:
+              </p>
+              <div className="flex items-center gap-3">
+                <SonarButton
+                  variant="secondary"
+                  onClick={startVerification}
+                  className="flex-1"
+                >
+                  Retry Verification
+                </SonarButton>
+              </div>
+              <p className="text-xs text-sonar-highlight/50 text-center">
+                Verification is required to ensure audio quality and safety
+              </p>
             </div>
           </GlassCard>
         </motion.div>

@@ -151,10 +151,14 @@ export class SuiRepository implements DataRepository {
    */
   async getStats(): Promise<ProtocolStats> {
     // Use marketplace object for stats (it contains all economic data)
-    const { MARKETPLACE_ID } = await import('@/lib/sui/client');
+    const { CHAIN_CONFIG } = await import('@/lib/sui/client');
+
+    if (!CHAIN_CONFIG.marketplaceId) {
+      throw new Error('Marketplace ID is not configured.');
+    }
 
     const obj = await suiClient.getObject({
-      id: MARKETPLACE_ID,
+      id: CHAIN_CONFIG.marketplaceId,
       options: { showContent: true },
     });
 

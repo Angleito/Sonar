@@ -9,7 +9,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { useSealEncryption } from '@/hooks/useSeal';
 import { useWalrusParallelUpload } from '@/hooks/useWalrusParallelUpload';
 import { useSubWalletOrchestrator } from '@/hooks/useSubWalletOrchestrator';
-import { PACKAGE_ID } from '@/lib/sui/client';
+import { CHAIN_CONFIG } from '@/lib/sui/client';
 
 /**
  * Generate preview blob from audio file
@@ -128,7 +128,7 @@ export function EncryptionStep({
           file.file,
           {
             accessPolicy: 'purchase',
-            packageId: PACKAGE_ID
+            packageId: CHAIN_CONFIG.packageId ?? undefined,
           },
           (progressPercent) => {
             const fileProgress = (index + progressPercent / 100) / totalFiles;

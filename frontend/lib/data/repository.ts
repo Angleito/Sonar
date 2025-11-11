@@ -64,6 +64,10 @@ export function parseDataset(raw: any): Dataset {
     verified,
     updated_at: raw.updated_at ? Number(raw.updated_at) : createdAt,
     previewUrl: raw.previewUrl, // Direct preview URL when available
+    preview_blob_id: raw.preview_blob_id,
+    walrus_blob_id: raw.walrus_blob_id,
+    blob_id: raw.blob_id,
+    seal_policy_id: raw.seal_policy_id,
   };
 }
 

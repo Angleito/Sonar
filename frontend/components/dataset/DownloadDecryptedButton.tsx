@@ -101,8 +101,8 @@ export function DownloadDecryptedButton({ dataset, className = '' }: DownloadDec
       }
 
       // Step 3: Get blob_id and seal_policy_id from dataset metadata (on-chain)
-      const blobId = (dataset as any).blob_id || (dataset as any).walrus_blob_id;
-      const sealPolicyId = (dataset as any).seal_policy_id;
+      const blobId = dataset.walrus_blob_id || dataset.blob_id;
+      const sealPolicyId = dataset.seal_policy_id;
 
       if (!blobId || !sealPolicyId) {
         throw new Error('Dataset metadata incomplete. Missing blob_id or seal_policy_id.');

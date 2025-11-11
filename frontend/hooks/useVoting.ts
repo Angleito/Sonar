@@ -4,10 +4,7 @@ import { useState, useCallback } from 'react';
 import { useSignAndExecuteTransaction, useCurrentAccount } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import { toast } from 'sonner';
-
-// Updated 2025-11-06: Using old package temporarily for testing
-const SONAR_PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ||
-  '0x6e4a4e65ba20ead7cea8d6ef0ed4d5639afdfff259c6943f02cbce927b21ae89';
+import { CHAIN_CONFIG } from '@/lib/sui/client';
 
 export interface UseVotingOptions {
   submissionId: string;
@@ -38,13 +35,18 @@ export function useVoting({ submissionId, onSuccess, onError }: UseVotingOptions
       return;
     }
 
+    if (!CHAIN_CONFIG.packageId) {
+      toast.error('Blockchain configuration missing PACKAGE_ID');
+      return;
+    }
+
     setIsVoting(true);
 
     try {
       const tx = new Transaction();
 
       tx.moveCall({
-        target: `${SONAR_PACKAGE_ID}::marketplace::vote_on_submission`,
+        target: `${CHAIN_CONFIG.packageId}::marketplace::vote_on_submission`,
         arguments: [
           tx.object(submissionId),
           tx.pure.bool(isUpvote),
@@ -85,13 +87,18 @@ export function useVoting({ submissionId, onSuccess, onError }: UseVotingOptions
       return;
     }
 
+    if (!CHAIN_CONFIG.packageId) {
+      toast.error('Blockchain configuration missing PACKAGE_ID');
+      return;
+    }
+
     setIsRemoving(true);
 
     try {
       const tx = new Transaction();
 
       tx.moveCall({
-        target: `${SONAR_PACKAGE_ID}::marketplace::remove_vote`,
+        target: `${CHAIN_CONFIG.packageId}::marketplace::remove_vote`,
         arguments: [
           tx.object(submissionId),
           tx.pure.bool(wasUpvote),

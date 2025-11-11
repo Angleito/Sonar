@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useSignAndExecuteTransaction, useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import type { Dataset } from '@/types/blockchain';
-import { MARKETPLACE_ID, PACKAGE_ID, SONAR_COIN_TYPE } from '@/lib/sui/client';
+import { CHAIN_CONFIG, SONAR_COIN_TYPE } from '@/lib/sui/client';
 import { collectCoinsForAmount, prepareCoinPayment } from '@/lib/sui/coin-utils';
+import { clearPurchaseCacheEntry } from '@/lib/sui/purchase-verification';
 
 export interface PurchaseState {
   isPurchasing: boolean;
@@ -87,15 +88,17 @@ export function usePurchase(): UsePurchaseReturn {
     });
 
     try {
-      if (!MARKETPLACE_ID || MARKETPLACE_ID === '0x0') {
-        throw new Error('Marketplace ID is not configured. Set NEXT_PUBLIC_MARKETPLACE_ID.');
+      if (!CHAIN_CONFIG.configured || !CHAIN_CONFIG.packageId || !CHAIN_CONFIG.marketplaceId) {
+        const missing =
+          CHAIN_CONFIG.missingKeys.length > 0
+            ? CHAIN_CONFIG.missingKeys.join(', ')
+            : 'PACKAGE_ID / MARKETPLACE_ID';
+        throw new Error(
+          `Blockchain configuration incomplete (${missing}). Update NEXT_PUBLIC_* env vars or deployment defaults.`
+        );
       }
 
-      if (!PACKAGE_ID || PACKAGE_ID === '0x0') {
-        throw new Error('Package ID is not configured. Set NEXT_PUBLIC_PACKAGE_ID.');
-      }
-
-      if (SONAR_COIN_TYPE === '0x0::sonar::SONAR') {
+      if (!SONAR_COIN_TYPE) {
         throw new Error('SONAR coin type is not configured.');
       }
 
@@ -139,9 +142,9 @@ export function usePurchase(): UsePurchaseReturn {
 
       // Sign and execute transaction
       tx.moveCall({
-        target: `${PACKAGE_ID}::marketplace::purchase_dataset`,
+        target: `${CHAIN_CONFIG.packageId}::marketplace::purchase_dataset`,
         arguments: [
-          tx.object(MARKETPLACE_ID),
+          tx.object(CHAIN_CONFIG.marketplaceId),
           tx.object(dataset.id),
           paymentCoin,
         ],
@@ -160,6 +163,13 @@ export function usePurchase(): UsePurchaseReturn {
         error: null,
         digest: result.digest,
       });
+
+      // Clear cached ownership checks so UI can unlock immediately
+      try {
+        clearPurchaseCacheEntry(currentAccount.address, dataset.id);
+      } catch (cacheError) {
+        console.warn('[usePurchase] Failed to clear purchase cache', cacheError);
+      }
 
       // Note: In production, you would:
       // 1. Wait for transaction confirmation

@@ -40,7 +40,8 @@ export function AudioPlayer({ dataset }: AudioPlayerProps) {
   const { verifyOwnership, isVerifying, isConnected } = usePurchaseVerification();
 
   // Use direct preview URL if available, otherwise use backend endpoint
-  const previewUrl = dataset.previewUrl || getPreviewUrl(dataset.id);
+  const previewBlobUrl = dataset.preview_blob_id ? getPreviewUrl(dataset.preview_blob_id) : undefined;
+  const previewUrl = dataset.previewUrl ?? previewBlobUrl ?? '';
 
   // Determine which audio source to use
   const audioSrc = useMemo(() => {
@@ -125,8 +126,8 @@ export function AudioPlayer({ dataset }: AudioPlayerProps) {
       // Step 3: Get blob_id and seal_policy_id from dataset metadata (on-chain)
       // NOTE: In production, these would come from querying the on-chain AudioSubmission object
       // For now, we assume the dataset object has these fields populated from events
-      const blobId = (dataset as any).blob_id || (dataset as any).walrus_blob_id;
-      const sealPolicyId = (dataset as any).seal_policy_id;
+      const blobId = dataset.walrus_blob_id || dataset.blob_id;
+      const sealPolicyId = dataset.seal_policy_id;
 
       if (!blobId || !sealPolicyId) {
         throw new Error('Dataset metadata incomplete. Missing blob_id or seal_policy_id.');

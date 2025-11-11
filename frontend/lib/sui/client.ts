@@ -1,5 +1,7 @@
 import { SuiClient } from '@mysten/sui/client';
 import { createGraphQLClient, createGraphQLClients } from './graphql-clients';
+import testnetDeployment from '../../../contracts/deployments/testnet.json';
+import mainnetDeployment from '../../../contracts/deployments/mainnet.json';
 
 // Network configuration
 export const NETWORK = (process.env.NEXT_PUBLIC_NETWORK || 'testnet') as 'mainnet' | 'testnet' | 'devnet';
@@ -31,18 +33,93 @@ export const graphqlClient = createGraphQLClient(NETWORK);
  */
 export const graphqlClients = createGraphQLClients(NETWORK);
 
-// Contract addresses (placeholders until deployed)
-export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID || '0x0';
-export const STATS_OBJECT_ID = process.env.NEXT_PUBLIC_STATS_OBJECT_ID || '0x0';
-export const MARKETPLACE_ID = process.env.NEXT_PUBLIC_MARKETPLACE_ID || '0x0';
-export const REWARD_POOL_ID = process.env.NEXT_PUBLIC_REWARD_POOL_ID || '0x0';
+type DeploymentJson = {
+  packageId?: string;
+  objects?: Record<string, string>;
+};
+
+const deploymentDefaultsByNetwork: Record<string, DeploymentJson> = {
+  testnet: testnetDeployment as DeploymentJson,
+  mainnet: mainnetDeployment as DeploymentJson,
+};
+
+const OBJECT_ID_REGEX = /^0x[0-9a-fA-F]{64}$/;
+
+const normalizeObjectId = (value: string | undefined, label: string): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+
+  if (trimmed === '' || trimmed === '0x0') {
+    return undefined;
+  }
+
+  if (!OBJECT_ID_REGEX.test(trimmed)) {
+    console.warn(`[sui/client] Ignoring invalid ${label}: ${trimmed}`);
+    return undefined;
+  }
+
+  return trimmed;
+};
+
+const deploymentDefaults = deploymentDefaultsByNetwork[NETWORK] ?? {};
+
+const packageIdInternal = normalizeObjectId(
+  process.env.NEXT_PUBLIC_PACKAGE_ID || deploymentDefaults.packageId,
+  'PACKAGE_ID'
+);
+
+const marketplaceIdInternal = normalizeObjectId(
+  process.env.NEXT_PUBLIC_MARKETPLACE_ID || deploymentDefaults.objects?.marketplace,
+  'MARKETPLACE_ID'
+);
+
+const statsObjectIdInternal = normalizeObjectId(
+  process.env.NEXT_PUBLIC_STATS_OBJECT_ID || deploymentDefaults.objects?.marketplace,
+  'STATS_OBJECT_ID'
+);
+
+const rewardPoolIdInternal = normalizeObjectId(
+  process.env.NEXT_PUBLIC_REWARD_POOL_ID,
+  'REWARD_POOL_ID'
+);
+
+const missingConfig: string[] = [];
+
+if (!packageIdInternal) missingConfig.push('PACKAGE_ID');
+if (!marketplaceIdInternal) missingConfig.push('MARKETPLACE_ID');
+
+if (missingConfig.length > 0) {
+  console.warn(
+    `[sui/client] Blockchain config incomplete: ${missingConfig.join(', ')}. ` +
+    'Set NEXT_PUBLIC_* env vars or update contracts/deployments JSON.'
+  );
+}
+
+export const CHAIN_CONFIG = {
+  packageId: packageIdInternal ?? null,
+  marketplaceId: marketplaceIdInternal ?? null,
+  statsObjectId: statsObjectIdInternal ?? null,
+  rewardPoolId: rewardPoolIdInternal ?? null,
+  configured: missingConfig.length === 0,
+  missingKeys: missingConfig,
+} as const;
+
+// Contract addresses (fall back to empty string when missing for backwards compatibility)
+export const PACKAGE_ID = CHAIN_CONFIG.packageId ?? '';
+export const STATS_OBJECT_ID = CHAIN_CONFIG.statsObjectId ?? '';
+export const MARKETPLACE_ID = CHAIN_CONFIG.marketplaceId ?? '';
+export const REWARD_POOL_ID = CHAIN_CONFIG.rewardPoolId ?? '';
 
 // Coin type for SONAR token
-export const SONAR_COIN_TYPE = `${PACKAGE_ID}::sonar::SONAR`;
+export const SONAR_COIN_TYPE = CHAIN_CONFIG.packageId ? `${CHAIN_CONFIG.packageId}::sonar::SONAR` : '';
 
 // Type definitions for on-chain objects
-export const DATASET_TYPE = `${PACKAGE_ID}::marketplace::AudioSubmission`;
-export const PROTOCOL_STATS_TYPE = `${PACKAGE_ID}::marketplace::QualityMarketplace`;
+export const DATASET_TYPE = CHAIN_CONFIG.packageId
+  ? `${CHAIN_CONFIG.packageId}::marketplace::AudioSubmission`
+  : '';
+export const PROTOCOL_STATS_TYPE = CHAIN_CONFIG.packageId
+  ? `${CHAIN_CONFIG.packageId}::marketplace::QualityMarketplace`
+  : '';
 
 // Feature flags
 export const USE_BLOCKCHAIN = process.env.NEXT_PUBLIC_USE_BLOCKCHAIN === 'true';

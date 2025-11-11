@@ -113,6 +113,26 @@ railway variables set WALRUS_RPC_URL="https://aggregator.walrus.network"
 railway variables set CORS_ORIGIN="https://your-frontend-domain.com"
 ```
 
+### 3a. Frontend Blockchain Configuration
+
+The frontend now talks directly to the blockchain. Make sure these **public** environment variables are set **before building** the Next.js app:
+
+| Variable | Description | Suggested Source |
+| --- | --- | --- |
+| `NEXT_PUBLIC_PACKAGE_ID` | Published SONAR Move package | `contracts/deployments/<network>.json` → `packageId` |
+| `NEXT_PUBLIC_MARKETPLACE_ID` | Shared `QualityMarketplace` object ID | `contracts/deployments/<network>.json` → `objects.marketplace` |
+| `NEXT_PUBLIC_STATS_OBJECT_ID` | (Optional) Marketplace object for stats queries | same as `NEXT_PUBLIC_MARKETPLACE_ID` |
+| `NEXT_PUBLIC_REWARD_POOL_ID` | Reward pool balance object (optional) | Manual lookup (not in JSON yet) |
+
+> ℹ️ If the environment variables are omitted, the frontend will try to fall back to the values in `contracts/deployments/<network>.json` (testnet/mainnet). Missing IDs trigger a clear UI error message and **block wallet transactions** so users never sign against `0x0`.
+
+Example for Vercel/Netlify:
+
+```bash
+vercel env add NEXT_PUBLIC_PACKAGE_ID 0x6e4a4e65ba20ead7cea8d6ef0ed4d5639afdfff259c6943f02cbce927b21ae89
+vercel env add NEXT_PUBLIC_MARKETPLACE_ID 0xaa422269e77e2197188f9c8e47ffb3faf21c0bafff1d5d04ea9613acc4994bb4
+```
+
 ### 4. Deploy Backend
 
 ```bash

@@ -184,14 +184,11 @@ function LargeFileUpload() {
 From research of `@mysten/walrus` SDK:
 
 ```typescript
-const WALRUS_SYSTEM_OBJECT =
-  '0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2';
+const WALRUS_SYSTEM_OBJECT = process.env.NEXT_PUBLIC_WALRUS_SYSTEM_OBJECT!;
 
-const WALRUS_PACKAGE_ID =
-  '0xfdc88f7d7cf30afab2f82e8380d11ee8f70efb90e863d1de8616fae1bb09ea77';
+const WALRUS_PACKAGE_ID = process.env.NEXT_PUBLIC_WALRUS_PACKAGE_ID!;
 
-const WAL_TOKEN_PACKAGE =
-  '0x356a26eb9e012a68958082340d4c4116e7f55615cf27affcff209cf0ae544f59';
+const WAL_TOKEN_PACKAGE = process.env.NEXT_PUBLIC_WAL_TOKEN_PACKAGE!;
 ```
 
 ### Register Blob Transaction

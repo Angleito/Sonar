@@ -5,13 +5,11 @@
 
 /**
  * Get preview audio URL (edge proxy to Walrus)
- * NOTE: This is a placeholder. In production, this would query on-chain metadata
- * to get preview_blob_id, then return edge proxy URL
+ *
+ * @param blobId - Walrus blob ID (typically preview_blob_id)
  */
-export function getPreviewUrl(datasetId: string): string {
-  // TODO: Query on-chain metadata for preview_blob_id
-  // For now, return placeholder - components should use dataset.previewUrl if available
-  return `/api/edge/walrus/preview?blobId=${datasetId}`;
+export function getPreviewUrl(blobId: string): string {
+  return `/api/edge/walrus/preview?blobId=${encodeURIComponent(blobId)}`;
 }
 
 /**

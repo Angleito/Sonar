@@ -30,6 +30,11 @@ export interface Dataset {
   total_purchases?: number;
   previewUrl?: string; // Optional direct preview URL when available
   bundled_clips?: Dataset[];  // Optional array of clips for bundle datasets
+  // Walrus / Seal metadata (optional: populated when available)
+  preview_blob_id?: string;
+  walrus_blob_id?: string;
+  blob_id?: string; // Legacy backend field
+  seal_policy_id?: string;
 }
 
 // Server-side only type (includes blob IDs for backend API routes)

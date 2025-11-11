@@ -3,10 +3,5 @@
   "installCommand": "bun install",
   "buildCommand": "bun run build:frontend",
   "devCommand": "bun run dev:frontend",
-  "outputDirectory": "frontend/.next",
-  "functions": {
-    "app/api/edge/verify/worker/route.ts": {
-      "maxDuration": 300
-    }
-  }
+  "outputDirectory": "frontend/.next"
 }

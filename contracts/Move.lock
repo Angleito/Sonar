@@ -82,6 +82,6 @@ published-version = "3"
 
 [env.mainnet]
 chain-id = "35834a8a"
-original-published-id = "0xdff609ce3174576c8a0e81c9f65775e7e7fe5b11c5ef375345fab4ca4b837e9d"
-latest-published-id = "0xdff609ce3174576c8a0e81c9f65775e7e7fe5b11c5ef375345fab4ca4b837e9d"
+original-published-id = "0x86a476eacd98b65141efd32c0cc63052167d4b5225ae80cc04a15cdd5006bdda"
+latest-published-id = "0x86a476eacd98b65141efd32c0cc63052167d4b5225ae80cc04a15cdd5006bdda"
 published-version = "1"

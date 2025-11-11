@@ -18,7 +18,7 @@ import {
   type DecryptionResult,
   type ProgressCallback,
 } from '@sonar/seal';
-import { suiClient, PACKAGE_ID, NETWORK } from '@/lib/sui/client';
+import { suiClient, CHAIN_CONFIG, NETWORK } from '@/lib/sui/client';
 
 const RAW_KEY_SERVERS = process.env.NEXT_PUBLIC_SEAL_KEY_SERVERS || '';
 
@@ -93,7 +93,7 @@ export function useSeal() {
     if (!sealClient || !hasKeyServersConfigured) return;
 
     try {
-      const cached = await restoreSession(PACKAGE_ID, suiClient as SuiClient);
+      const cached = await restoreSession(CHAIN_CONFIG.packageId ?? undefined, suiClient as SuiClient);
       if (cached && isSessionValid(cached)) {
         console.log('Restored Seal session from cache');
         setSessionKey(cached);
@@ -148,7 +148,7 @@ export function useSeal() {
       setError(null);
 
       try {
-        const session = await createSession(account.address, PACKAGE_ID, {
+        const session = await createSession(account.address, CHAIN_CONFIG.packageId ?? undefined, {
           ttlMin: options.ttlMin || 10,
           suiClient: suiClient as SuiClient,
           mvrName: 'SONAR',
@@ -190,7 +190,7 @@ export function useSeal() {
       setError(null);
 
       try {
-        const resolvedPackageId = PACKAGE_ID !== '0x0' ? PACKAGE_ID : undefined;
+        const resolvedPackageId = CHAIN_CONFIG.packageId ?? undefined;
 
         const result = await encryptFile(
           sealClient,
@@ -241,7 +241,7 @@ export function useSeal() {
           encryptedData,
           {
             sessionKey,
-            packageId: PACKAGE_ID,
+            packageId: CHAIN_CONFIG.packageId ?? undefined,
             identity,
             policyModule: 'purchase_policy', // Default policy
             suiClient: suiClient as SuiClient,

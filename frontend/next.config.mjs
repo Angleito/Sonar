@@ -14,6 +14,7 @@ const nextConfig = {
     ],
   },
   experimental: {
+    externalDir: true,
     turbopack: {
       resolveAlias: {
         fs: false,

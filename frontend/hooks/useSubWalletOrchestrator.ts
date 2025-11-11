@@ -150,8 +150,8 @@ export function useSubWalletOrchestrator() {
     tx.setGasBudget(100000000); // 0.1 SUI for Walrus operations
 
     // This is where we'd call the Walrus registerBlob moveCall
-    // Using the package ID from our research:
-    // 0xfdc88f7d7cf30afab2f82e8380d11ee8f70efb90e863d1de8616fae1bb09ea77
+    // Reference the WALRUS package ID from configuration or environment
+    // rather than hard-coding values in source control.
 
     // NOTE: Actual Walrus SDK integration would go here
     // For now, this is a placeholder showing the transaction structure

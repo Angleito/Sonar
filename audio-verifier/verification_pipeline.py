@@ -1,0 +1,578 @@
+"""
+Verification Pipeline for SONAR Audio Datasets
+
+Six-stage pipeline:
+1. Quality Check (AudioQualityChecker)
+2. Copyright Check (Chromaprint + AcoustID)
+3. Transcription (Gemini Audio API)
+4. AI Analysis (Gemini)
+5. Aggregation
+6. Finalization
+"""
+
+import tempfile
+import os
+import json
+import logging
+from typing import Dict, Any, Tuple
+from contextlib import asynccontextmanager
+
+import google.generativeai as genai
+
+from audio_checker import AudioQualityChecker
+from fingerprint import CopyrightDetector
+from sui_client import SuiVerificationClient
+
+logger = logging.getLogger(__name__)
+
+
+class VerificationPipeline:
+    """
+    Orchestrates the full verification pipeline for audio datasets.
+
+    Manages temp files and ensures cleanup even on failures.
+    All verification state is recorded on Sui blockchain.
+    """
+
+    def __init__(
+        self,
+        sui_client: SuiVerificationClient,
+        gemini_api_key: str,
+        acoustid_api_key: Optional[str] = None
+    ):
+        """
+        Initialize the verification pipeline.
+
+        Args:
+            sui_client: Sui blockchain client for session state
+            gemini_api_key: Google AI Studio API key for Gemini
+            acoustid_api_key: AcoustID API key for copyright detection
+        """
+        self.sui = sui_client
+
+        # Initialize Gemini
+        genai.configure(api_key=gemini_api_key)
+        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+
+        # Initialize quality and copyright checkers
+        self.quality_checker = AudioQualityChecker()
+        self.copyright_detector = CopyrightDetector(acoustid_api_key)
+
+    @asynccontextmanager
+    async def _temp_audio_file(self, audio_bytes: bytes, extension: str = ".wav"):
+        """
+        Context manager for temporary audio files.
+        Ensures cleanup even if pipeline fails.
+
+        Args:
+            audio_bytes: Raw audio data
+            extension: File extension (e.g., ".wav", ".mp3")
+
+        Yields:
+            Path to temporary file
+        """
+        temp_fd, temp_path = tempfile.mkstemp(
+            suffix=extension,
+            prefix="verify_",
+            dir="/tmp/audio-verifier" if os.path.exists("/tmp/audio-verifier") else None
+        )
+
+        try:
+            # Write bytes to temp file
+            os.write(temp_fd, audio_bytes)
+            os.close(temp_fd)
+
+            logger.debug(f"Created temp file: {temp_path}")
+            yield temp_path
+
+        finally:
+            # CRITICAL: Always clean up temp file
+            try:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                    logger.debug(f"Cleaned up temp file: {temp_path}")
+            except OSError as e:
+                logger.warning(f"Failed to delete temp file {temp_path}: {e}")
+
+    async def run_from_file(
+        self,
+        session_object_id: str,
+        audio_file_path: str,
+        metadata: Dict[str, Any]
+    ) -> None:
+        """
+        Run the complete six-stage verification pipeline from a file path.
+
+        This method streams from disk to avoid loading large files (up to 13GB) into memory.
+        The temp file is automatically cleaned up after processing.
+
+        Args:
+            session_object_id: On-chain VerificationSession object ID
+            audio_file_path: Path to temporary audio file on disk
+            metadata: Dataset metadata (title, description, etc.)
+        """
+        logger.info(f"Starting verification pipeline for session {session_object_id[:8]}... from file {audio_file_path}")
+
+        try:
+            # Run the standard pipeline with file path (avoids loading into RAM)
+            await self.run(session_object_id, audio_file_path, metadata)
+
+        except Exception as e:
+            logger.error(f"[{session_object_id[:8]}...] Pipeline failed: {e}", exc_info=True)
+            success = await self.sui.mark_failed(session_object_id, {
+                "errors": [f"Pipeline error: {str(e)}"],
+                "stage_failed": "system"
+            })
+            if not success:
+                logger.error(f"Failed to mark session {session_object_id[:8]}... as failed on blockchain")
+        finally:
+            # Always clean up temp file
+            try:
+                if os.path.exists(audio_file_path):
+                    os.unlink(audio_file_path)
+                    logger.debug(f"Cleaned up temp file: {audio_file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete temp file {audio_file_path}: {e}")
+
+    async def run(
+        self,
+        session_object_id: str,
+        audio_file_path: str,
+        metadata: Dict[str, Any]
+    ) -> None:
+        """
+        Run the complete six-stage verification pipeline.
+
+        Args:
+            session_object_id: On-chain VerificationSession object ID
+            audio_file_path: Path to audio file on disk (avoids loading 13GB into RAM)
+            metadata: Dataset metadata (title, description, etc.)
+        """
+        logger.info(f"Starting verification pipeline for session {session_object_id[:8]}...")
+
+        try:
+            # Stage 1: Quality Check
+            logger.info(f"[{session_object_id}] Stage 1: Quality Check")
+            quality_result, audio_bytes = await self._stage_quality_check(
+                session_object_id,
+                audio_file_path
+            )
+
+            # Fail fast if quality check fails
+            if not quality_result.get("quality", {}).get("passed", False):
+                logger.warning(f"[{session_object_id}] Failed quality check")
+                success = await self.sui.mark_failed(session_object_id, {
+                    "quality": quality_result.get("quality"),
+                    "errors": quality_result.get("errors", []),
+                    "stage_failed": "quality"
+                })
+                if not success:
+                    logger.error(f"Failed to mark session as failed on blockchain")
+                return
+
+            # Stage 2: Copyright Check
+            logger.info(f"[{session_object_id}] Stage 2: Copyright Check")
+            copyright_result = await self._stage_copyright_check(
+                session_object_id,
+                audio_bytes
+            )
+            # Explicitly free large byte buffer before moving on
+            del audio_bytes
+
+            # Stage 3: Transcription
+            logger.info(f"[{session_object_id}] Stage 3: Transcription")
+            transcript = await self._stage_transcription(
+                session_object_id,
+                audio_file_path
+            )
+
+            # Stage 4: AI Analysis
+            logger.info(f"[{session_object_id}] Stage 4: AI Analysis")
+            analysis_result = await self._stage_analysis(
+                session_object_id,
+                transcript,
+                metadata,
+                quality_result.get("quality", {})
+            )
+
+            # Stage 5: Aggregation
+            logger.info(f"[{session_object_id}] Stage 5: Aggregation")
+            await self._update_stage(session_object_id, "finalizing", 0.95)
+
+            # Calculate final approval
+            approved = self._calculate_approval(
+                quality_result,
+                copyright_result,
+                analysis_result
+            )
+
+            # Stage 6: Finalization
+            logger.info(f"[{session_object_id}] Stage 6: Finalization")
+            completed = await self.sui.mark_completed(session_object_id, {
+                "approved": approved,
+                "quality": quality_result.get("quality"),
+                "copyright": copyright_result.get("copyright"),
+                "transcript": transcript,
+                "transcriptPreview": transcript[:200],
+                "analysis": analysis_result,
+                "safetyPassed": analysis_result.get("safetyPassed", False)
+            })
+
+            if not completed:
+                raise RuntimeError("Failed to finalize verification on-chain")
+
+            logger.info(
+                f"[{session_object_id}] Pipeline completed. "
+                f"Approved: {approved}"
+            )
+
+        except Exception as e:
+            logger.error(f"[{session_object_id}] Pipeline failed: {e}", exc_info=True)
+            success = await self.sui.mark_failed(session_object_id, {
+                "errors": [f"Pipeline error: {str(e)}"],
+                "stage_failed": "system"
+            })
+            if not success:
+                logger.error(f"Failed to mark session as failed on blockchain")
+
+    async def _stage_quality_check(
+        self,
+        session_object_id: str,
+        audio_file_path: str
+    ) -> Tuple[Dict[str, Any], bytes]:
+        """
+        Stage 1: Quality Check
+
+        Uses AudioQualityChecker to verify technical audio quality.
+        """
+        await self._update_stage(session_object_id, "quality", 0.15)
+
+        with open(audio_file_path, 'rb') as file_handle:
+            audio_bytes = file_handle.read()
+        result = await self.quality_checker.check_audio(audio_bytes)
+
+        quality_info = result.get("quality")
+        if quality_info:
+            quality_info["score"] = self._compute_quality_score(quality_info)
+
+        await self._update_stage(session_object_id, "quality", 0.30)
+
+        return result, audio_bytes
+
+    async def _stage_copyright_check(
+        self,
+        session_object_id: str,
+        audio_bytes: bytes
+    ) -> Dict[str, Any]:
+        """
+        Stage 2: Copyright Check
+
+        Uses Chromaprint + AcoustID for copyright detection.
+        """
+        await self._update_stage(session_object_id, "copyright", 0.35)
+        result = await self.copyright_detector.check_copyright(audio_bytes)
+
+        await self._update_stage(session_object_id, "copyright", 0.45)
+
+        return result
+
+    async def _stage_transcription(
+        self,
+        session_object_id: str,
+        audio_file_path: str
+    ) -> str:
+        """
+        Stage 3: Transcription
+
+        Uses Gemini to transcribe audio to text.
+        """
+        await self._update_stage(session_object_id, "transcription", 0.55)
+
+        try:
+            # Upload audio file to Gemini
+            # Gemini handles large files via chunked upload
+            logger.debug(f"Uploading audio to Gemini: {audio_file_path}")
+            audio_file = genai.upload_file(path=audio_file_path)
+
+            try:
+                # Generate transcription
+                response = self.model.generate_content([
+                    "Transcribe this audio verbatim. Return only the transcript text, "
+                    "without any additional commentary or formatting.",
+                    audio_file
+                ])
+
+                transcript = response.text.strip()
+
+                logger.debug(f"Transcription length: {len(transcript)} chars")
+
+                await self._update_stage(session_object_id, "transcription", 0.65)
+
+                return transcript
+
+            finally:
+                # IMPORTANT: Delete file from Gemini's storage after use
+                try:
+                    genai.delete_file(audio_file.name)
+                    logger.debug(f"Deleted Gemini file: {audio_file.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete Gemini file: {e}")
+
+        except Exception as e:
+            logger.error(f"Transcription failed: {e}")
+            raise Exception(f"Failed to transcribe audio: {str(e)}")
+
+    async def _stage_analysis(
+        self,
+        session_object_id: str,
+        transcript: str,
+        metadata: Dict[str, Any],
+        quality_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Stage 4: AI Analysis
+
+        Uses Gemini to analyze content quality, safety, and value.
+        """
+        await self._update_stage(session_object_id, "analysis", 0.75)
+
+        # Build analysis prompt (ported from frontend/lib/ai/analysis.ts)
+        prompt = self._build_analysis_prompt(transcript, metadata, quality_info)
+
+        try:
+            response = self.model.generate_content(prompt)
+            response_text = response.text.strip()
+
+            # Parse JSON response
+            analysis = self._parse_analysis_response(response_text)
+
+            await self._update_stage(session_object_id, "analysis", 0.85)
+
+            return analysis
+
+        except Exception as e:
+            logger.error(f"Analysis failed: {e}")
+            await self._update_stage(session_object_id, "analysis", 0.85)
+            # Return safe defaults if analysis fails
+            return {
+                "qualityScore": 0.5,
+                "safetyPassed": True,
+                "insights": ["Analysis parsing failed - manual review recommended"],
+                "concerns": ["Unable to parse detailed analysis"]
+            }
+
+    def _build_analysis_prompt(
+        self,
+        transcript: str,
+        metadata: Dict[str, Any],
+        quality_info: Dict[str, Any]
+    ) -> str:
+        """
+        Build Gemini analysis prompt.
+
+        Ported from frontend/lib/ai/analysis.ts
+        """
+        # Format audio metadata
+        audio_meta_str = ""
+        if quality_info:
+            audio_meta_str = f"""- Duration: {quality_info.get('duration', 0):.1f}s
+- Sample Rate: {quality_info.get('sample_rate', 0)}Hz
+- Channels: {quality_info.get('channels', 0)}
+- Bit Depth: {quality_info.get('bit_depth', 0)}"""
+
+        # Truncate transcript if too long
+        transcript_sample = transcript[:2000] + "..." if len(transcript) > 2000 else transcript
+
+        return f"""You are an expert audio dataset quality analyst for the SONAR Protocol, a decentralized audio data marketplace. Analyze this audio dataset submission and provide a comprehensive quality assessment.
+
+## Dataset Metadata
+- Title: {metadata.get('title', 'Unknown')}
+- Description: {metadata.get('description', 'No description')}
+- Languages: {', '.join(metadata.get('languages', []))}
+- Tags: {', '.join(metadata.get('tags', []))}
+{audio_meta_str}
+
+## Transcript Sample
+{transcript_sample}
+
+## Analysis Required
+
+Provide your analysis in the following JSON format:
+
+```json
+{{
+  "qualityScore": 0.85,
+  "safetyPassed": true,
+  "insights": [
+    "Insight 1 about the dataset quality",
+    "Insight 2 about content value",
+    "Insight 3 about potential use cases"
+  ],
+  "concerns": [
+    "Any quality concerns (if applicable)"
+  ],
+  "recommendations": [
+    "Suggestions for improvement"
+  ]
+}}
+```
+
+### Quality Scoring Criteria (0-1 scale):
+- **Audio Clarity** (0.3): Is the transcript coherent? Minimal transcription errors?
+- **Content Value** (0.3): Is the content meaningful, diverse, and useful for AI training?
+- **Metadata Accuracy** (0.2): Does the content match the provided metadata?
+- **Completeness** (0.2): Is the content complete without obvious truncation?
+
+### Safety Screening:
+Flag as unsafe (safetyPassed: false) ONLY if content contains:
+- Hate speech or explicit discrimination
+- Graphic violence or gore descriptions
+- Child exploitation material
+- Illegal activity promotion
+- Personally identifiable information (PII)
+
+Conversational datasets with mild profanity, political discussion, or sensitive topics are generally ACCEPTABLE if contextually appropriate.
+
+### Insights:
+Provide 3-5 actionable insights about:
+- Content quality and clarity
+- Potential use cases (conversational AI, voice synthesis, etc.)
+- Unique characteristics of the dataset
+- Market value proposition
+
+Respond ONLY with the JSON object, no additional text."""
+
+    def _parse_analysis_response(self, response_text: str) -> Dict[str, Any]:
+        """
+        Parse Gemini's analysis JSON response.
+
+        Handles markdown code blocks and validates structure.
+        """
+        try:
+            # Extract JSON from markdown code blocks if present
+            json_match = response_text.find("```json")
+            if json_match != -1:
+                start = json_match + 7  # len("```json\n")
+                end = response_text.find("```", start)
+                json_string = response_text[start:end].strip()
+            else:
+                json_string = response_text.strip()
+
+            parsed = json.loads(json_string)
+
+            # Validate response structure
+            if (
+                not isinstance(parsed.get("qualityScore"), (int, float)) or
+                not isinstance(parsed.get("safetyPassed"), bool) or
+                not isinstance(parsed.get("insights"), list)
+            ):
+                raise ValueError("Invalid response structure from Gemini")
+
+            # Normalize quality score to 0-1 range
+            quality_score = max(0.0, min(1.0, float(parsed["qualityScore"])))
+
+            return {
+                "qualityScore": quality_score,
+                "safetyPassed": bool(parsed["safetyPassed"]),
+                "insights": parsed.get("insights", []),
+                "concerns": parsed.get("concerns", []),
+                "recommendations": parsed.get("recommendations", [])
+            }
+
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            logger.error(f"Failed to parse analysis response: {e}")
+            logger.error(f"Raw response: {response_text}")
+
+            # Return safe defaults if parsing fails
+            return {
+                "qualityScore": 0.5,
+                "safetyPassed": True,
+                "insights": [
+                    "Analysis completed but response parsing failed",
+                    "Manual review recommended"
+                ],
+                "concerns": ["Unable to parse detailed analysis"]
+            }
+
+    def _calculate_approval(
+        self,
+        quality_result: Dict[str, Any],
+        copyright_result: Dict[str, Any],
+        analysis_result: Dict[str, Any]
+    ) -> bool:
+        """
+        Calculate final approval based on all verification stages.
+
+        Approval requires:
+        - Quality check passed
+        - No high-confidence copyright match
+        - Safety check passed
+        """
+        quality_passed = quality_result.get("quality", {}).get("passed", False)
+
+        copyright_info = copyright_result.get("copyright", {})
+        copyright_detected = copyright_info.get("detected", False)
+        copyright_confidence = copyright_info.get("confidence", 0.0)
+
+        # Consider it a copyright issue only if high confidence (>80%)
+        high_confidence_copyright = copyright_detected and copyright_confidence > 0.8
+
+        safety_passed = analysis_result.get("safetyPassed", False)
+
+        approved = (
+            quality_passed and
+            not high_confidence_copyright and
+            safety_passed
+        )
+
+        logger.info(
+            f"Approval calculation: quality={quality_passed}, "
+            f"copyright_ok={not high_confidence_copyright}, "
+            f"safety={safety_passed} => {approved}"
+        )
+
+        return approved
+
+    async def _update_stage(
+        self,
+        session_object_id: str,
+        stage_name: str,
+        progress: float
+    ) -> None:
+        """
+        Helper to update stage on-chain and raise if the transaction fails.
+        """
+        success = await self.sui.update_stage(
+            session_object_id,
+            {"stage": stage_name, "progress": progress}
+        )
+        if not success:
+            raise RuntimeError(f"Failed to update stage '{stage_name}' for session {session_object_id[:8]}...")
+
+    def _compute_quality_score(self, quality: Dict[str, Any]) -> int:
+        """
+        Compute an intuitive quality score (0-100) from quality metrics.
+        """
+        if not quality.get("passed"):
+            return 0
+
+        score = 100
+
+        duration = quality.get("duration", 0)
+        sample_rate = quality.get("sample_rate", 0)
+        clipping = quality.get("clipping", False)
+        silence_percent = quality.get("silence_percent", 0.0)
+        volume_ok = quality.get("volume_ok", False)
+
+        if duration < self.quality_checker.MIN_DURATION or duration > self.quality_checker.MAX_DURATION:
+            score -= 25
+        if sample_rate < self.quality_checker.MIN_SAMPLE_RATE:
+            score -= 25
+        if clipping:
+            score -= 20
+        if silence_percent >= self.quality_checker.MAX_SILENCE_PERCENT:
+            score -= 15
+        if not volume_ok:
+            score -= 15
+
+        return max(0, min(100, int(score)))

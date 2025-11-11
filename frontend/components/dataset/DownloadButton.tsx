@@ -54,7 +54,7 @@ export function DownloadButton({
       }
 
       // Step 2: Get blob_id from dataset metadata
-      const blobId = (dataset as any).blob_id || (dataset as any).walrus_blob_id;
+      const blobId = dataset.walrus_blob_id || dataset.blob_id;
       if (!blobId) {
         throw new Error('Dataset metadata incomplete. Missing blob_id.');
       }
