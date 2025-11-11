@@ -116,7 +116,7 @@ SONAR Protocol is developing a comprehensive ecosystem for decentralized audio d
 ### Major Milestones
 
 #### SNR Token Launch
-- **Launch Platform:** SuiPad launchpad
+- **Launch:** Token launch coming soon (exploring launch options)
 - **Token Utility:**
   - Payment for datasets
   - Staking for governance rights
@@ -124,7 +124,7 @@ SONAR Protocol is developing a comprehensive ecosystem for decentralized audio d
   - Fee discounts for token holders
   - Liquidity mining programs
 - **Fair Distribution:**
-  - Public sale via SuiPad
+  - Public sale details to be announced
   - Team vesting (24 months)
   - Ecosystem allocation for partnerships
   - Liquidity pool seeding
@@ -215,7 +215,7 @@ SONAR Protocol is developing a comprehensive ecosystem for decentralized audio d
 - [ ] Multi-modal support launched
 
 ### Phase 3 (12+ months)
-- [ ] SNR token launched on SuiPad
+- [ ] SNR token launched
 - [ ] 10,000+ datasets available
 - [ ] 1,000+ active creators
 - [ ] $1M+ in dataset sales

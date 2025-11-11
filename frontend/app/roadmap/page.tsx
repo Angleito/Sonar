@@ -135,7 +135,7 @@ export default function RoadmapPage() {
               {/* Features Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FeatureItem icon={<Coins />}>
-                  SNR token launch via SuiPad launchpad
+                  SNR token launch (exploring launch options)
                 </FeatureItem>
                 <FeatureItem icon={<Target />}>
                   Token economics & staking rewards for creators
