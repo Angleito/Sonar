@@ -12,7 +12,6 @@ import type { AudioFile } from '@/lib/types/upload';
 const mockEncrypt = mock(() => Promise.resolve({
   encryptedData: new ArrayBuffer(1024),
   identity: 'test-seal-policy-id',
-  backupKey: new Uint8Array([1, 2, 3, 4]),
   metadata: {
     threshold: 2,
     accessPolicy: 'purchase',
@@ -28,7 +27,6 @@ const mockUploadBlob = mock(() => Promise.resolve({
   blobId: 'test-blob-id',
   previewBlobId: 'preview-blob-id',
   seal_policy_id: 'test-seal-policy-id',
-  backupKey: new Uint8Array([1, 2, 3, 4]),
   strategy: 'blockberry' as const,
 }));
 

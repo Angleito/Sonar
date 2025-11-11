@@ -124,7 +124,6 @@ async function encryptSmallFile(
 
     return {
       encryptedData: encryptedObject,
-      backupKey: key,
       identity: identityHex,
       metadata,
     };
@@ -188,7 +187,7 @@ async function encryptLargeFile(
       sealParams.packageId = packageId;
     }
 
-    const { encryptedObject: sealedKey, key: backupKey } =
+    const { encryptedObject: sealedKey } =
       await client.encrypt(sealParams);
 
     onProgress?.(90, 'Creating envelope...');
@@ -211,7 +210,6 @@ async function encryptLargeFile(
 
     return {
       encryptedData: envelope,
-      backupKey,
       identity: identityHex,
       metadata,
     };

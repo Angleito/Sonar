@@ -52,13 +52,11 @@ describe('useWalrusParallelUpload', () => {
 
       const encryptedBlob = new Blob(['test data'], { type: 'application/octet-stream' });
       const seal_policy_id = 'test-policy-id';
-      const backupKey = new Uint8Array([1, 2, 3, 4]);
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
       const uploadResult = await result.current.uploadBlob(
         encryptedBlob,
         seal_policy_id,
-        backupKey,
         metadata
       );
 
@@ -75,7 +73,6 @@ describe('useWalrusParallelUpload', () => {
       const encryptedBlob = new Blob(['test data'], { type: 'application/octet-stream' });
       const previewBlob = new Blob(['preview data'], { type: 'audio/mp3' });
       const seal_policy_id = 'test-policy-id';
-      const backupKey = new Uint8Array([1, 2, 3, 4]);
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
       // Mock preview upload
@@ -96,7 +93,6 @@ describe('useWalrusParallelUpload', () => {
       const uploadResult = await result.current.uploadBlob(
         encryptedBlob,
         seal_policy_id,
-        backupKey,
         metadata,
         previewBlob
       );
@@ -112,11 +108,10 @@ describe('useWalrusParallelUpload', () => {
 
       const largeBlob = new Blob(['x'.repeat(1024 * 1024 * 1024 * 2)]); // 2 GB
       const seal_policy_id = 'test-policy-id';
-      const backupKey = new Uint8Array([1, 2, 3, 4]);
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
       await expect(
-        result.current.uploadBlob(largeBlob, seal_policy_id, backupKey, metadata)
+        result.current.uploadBlob(largeBlob, seal_policy_id, metadata)
       ).rejects.toThrow('Sponsored parallel uploads not yet implemented');
     });
 
@@ -130,11 +125,10 @@ describe('useWalrusParallelUpload', () => {
 
       const encryptedBlob = new Blob(['test data']);
       const seal_policy_id = 'test-policy-id';
-      const backupKey = new Uint8Array([1, 2, 3, 4]);
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
       await expect(
-        result.current.uploadBlob(encryptedBlob, seal_policy_id, backupKey, metadata)
+        result.current.uploadBlob(encryptedBlob, seal_policy_id, metadata)
       ).rejects.toThrow('Blockberry upload failed');
     });
   });
@@ -148,13 +142,11 @@ describe('useWalrusParallelUpload', () => {
 
       const encryptedBlob = new Blob(['test data']);
       const seal_policy_id = 'test-policy-id';
-      const backupKey = new Uint8Array([1, 2, 3, 4]);
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
       const uploadPromise = result.current.uploadBlob(
         encryptedBlob,
         seal_policy_id,
-        backupKey,
         metadata
       );
 

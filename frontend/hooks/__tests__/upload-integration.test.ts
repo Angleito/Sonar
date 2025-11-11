@@ -31,28 +31,17 @@ describe('Upload Pipeline Integration', () => {
     it('should structure FormData correctly for upload endpoint', () => {
       const encryptedBlob = new Blob(['test data'], { type: 'application/octet-stream' });
       const seal_policy_id = 'test-policy-id';
-      const backupKey = new Uint8Array([1, 2, 3, 4]);
       const metadata = { threshold: 2, accessPolicy: 'purchase' };
 
       const formData = new FormData();
       formData.append('file', encryptedBlob);
       formData.append('seal_policy_id', seal_policy_id);
-      formData.append('backupKey', Array.from(backupKey).join(','));
       formData.append('metadata', JSON.stringify(metadata));
 
       // Verify FormData contains expected fields
       expect(formData.get('file')).toBeInstanceOf(Blob);
       expect(formData.get('seal_policy_id')).toBe(seal_policy_id);
-      expect(formData.get('backupKey')).toBe('1,2,3,4');
       expect(formData.get('metadata')).toBe(JSON.stringify(metadata));
-    });
-
-    it('should parse backupKey from comma-separated string', () => {
-      const backupKeyString = '1,2,3,4,5,6,7,8';
-      const backupKey = new Uint8Array(backupKeyString.split(',').map(Number));
-
-      expect(backupKey).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]));
-      expect(backupKey.length).toBe(8);
     });
 
     it('should parse metadata from JSON string', () => {
@@ -142,17 +131,6 @@ describe('Upload Pipeline Integration', () => {
       expect(uploadResponse.strategy).toBe('blockberry');
       expect(uploadResponse.blobId).toBeDefined();
       expect(uploadResponse.seal_policy_id).toBeDefined();
-    });
-
-    it('should not include backupKey in upload response (security)', () => {
-      const uploadResponse = {
-        blobId: 'test-blob-id',
-        seal_policy_id: 'test-policy-id',
-        strategy: 'blockberry',
-      };
-
-      // @ts-expect-error - backupKey should not be in response
-      expect(uploadResponse.backupKey).toBeUndefined();
     });
   });
 

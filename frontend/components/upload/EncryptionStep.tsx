@@ -154,7 +154,6 @@ export function EncryptionStep({
         const walrusResult = await uploadBlob(
           encryptedBlob,
           encryptionResult.identity,
-          encryptionResult.backupKey,
           encryptionResult.metadata,
           previewBlob
         );
@@ -170,7 +169,6 @@ export function EncryptionStep({
           blobId: walrusResult.blobId,
           previewBlobId: walrusResult.previewBlobId,
           seal_policy_id: encryptionResult.identity,
-          backupKey: encryptionResult.backupKey,
           duration: file.duration,
           metadata: encryptionResult.metadata,
           encryptedData: encryptionResult.encryptedData,
@@ -201,7 +199,6 @@ export function EncryptionStep({
       const finalResult = {
         encryptedBlob: new Blob([new Uint8Array(result.encryptedData)]),
         seal_policy_id: result.seal_policy_id,
-        backupKey: result.backupKey,
         metadata: result.metadata,
         previewBlob: await generatePreviewBlob(filesToProcess[0]),
         walrusBlobId: result.blobId,

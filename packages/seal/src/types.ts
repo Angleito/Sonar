@@ -107,8 +107,6 @@ export interface EncryptFileOptions {
 export interface EncryptionResult {
   /** Encrypted data bytes */
   encryptedData: Uint8Array;
-  /** Backup symmetric key */
-  backupKey: Uint8Array;
   /** Identity string (hex-encoded) */
   identity: string;
   /** Metadata about the encryption */

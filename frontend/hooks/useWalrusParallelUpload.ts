@@ -26,7 +26,6 @@ export interface WalrusUploadResult {
   blobId: string;
   previewBlobId?: string;
   seal_policy_id: string;
-  backupKey: Uint8Array;
   strategy: 'blockberry' | 'sponsored-parallel';
 }
 
@@ -48,14 +47,12 @@ export function useWalrusParallelUpload() {
   const uploadViaBlockberry = useCallback(async (
     encryptedBlob: Blob,
     seal_policy_id: string,
-    backupKey: Uint8Array,
     metadata: any
   ): Promise<{ blobId: string; previewBlobId?: string }> => {
     // Call existing Blockberry upload endpoint
     const formData = new FormData();
     formData.append('file', encryptedBlob);
     formData.append('seal_policy_id', seal_policy_id);
-    formData.append('backupKey', Array.from(backupKey).join(','));
     formData.append('metadata', JSON.stringify(metadata));
 
     const response = await fetch('/api/edge/walrus/upload', {
@@ -80,7 +77,6 @@ export function useWalrusParallelUpload() {
   const uploadBlob = useCallback(async (
     encryptedBlob: Blob,
     seal_policy_id: string,
-    backupKey: Uint8Array,
     metadata: any,
     previewBlob?: Blob
   ): Promise<WalrusUploadResult> => {
@@ -97,7 +93,6 @@ export function useWalrusParallelUpload() {
       const { blobId, previewBlobId } = await uploadViaBlockberry(
         encryptedBlob,
         seal_policy_id,
-        backupKey,
         metadata
       );
 
@@ -128,7 +123,6 @@ export function useWalrusParallelUpload() {
         blobId,
         previewBlobId: finalPreviewBlobId,
         seal_policy_id,
-        backupKey,
         strategy: 'blockberry',
       };
     } else {
@@ -149,7 +143,6 @@ export function useWalrusParallelUpload() {
     files: Array<{
       encryptedBlob: Blob;
       seal_policy_id: string;
-      backupKey: Uint8Array;
       metadata: any;
       previewBlob?: Blob;
     }>
@@ -178,7 +171,6 @@ export function useWalrusParallelUpload() {
       const result = await uploadBlob(
         file.encryptedBlob,
         file.seal_policy_id,
-        file.backupKey,
         file.metadata,
         file.previewBlob
       );

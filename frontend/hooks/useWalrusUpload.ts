@@ -28,22 +28,18 @@ export function useWalrusUpload(options?: UseWalrusUploadOptions) {
 
   /**
    * Upload main audio blob (expects pre-encrypted data)
-   * Note: backupKey is kept client-side and never sent to Edge handler
    */
   const uploadMutation = useMutation({
     mutationFn: async ({
       encryptedBlob,
       seal_policy_id,
-      backupKey,
     }: {
       encryptedBlob: Blob;
       seal_policy_id: string;
-      backupKey: Uint8Array;
     }): Promise<WalrusUploadResult> => {
       setUploadProgress(0);
 
       // Create FormData with blob and metadata
-      // SECURITY: backupKey is intentionally NOT included here - it stays client-side
       const formData = new FormData();
       formData.append('file', encryptedBlob, 'encrypted-audio.bin');
       formData.append('seal_policy_id', seal_policy_id);
@@ -66,7 +62,6 @@ export function useWalrusUpload(options?: UseWalrusUploadOptions) {
       return {
         blobId: result.blobId,
         seal_policy_id,
-        backupKey, // Returned to caller but never sent to server
         previewBlobId: undefined, // Will be uploaded separately
       };
     },
@@ -112,7 +107,6 @@ export function useWalrusUpload(options?: UseWalrusUploadOptions) {
     const mainResult = await uploadMutation.mutateAsync({
       encryptedBlob: encryptionResult.encryptedBlob,
       seal_policy_id: encryptionResult.seal_policy_id,
-      backupKey: encryptionResult.backupKey,
     });
 
     // Upload preview if provided

@@ -63,7 +63,6 @@ const encrypted = await encryptFile(
 );
 
 console.log('Encrypted identity:', encrypted.identity);
-console.log('Backup key:', encrypted.backupKey);
 
 // 5. Decrypt file
 const decrypted = await decryptFile(

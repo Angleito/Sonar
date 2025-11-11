@@ -145,7 +145,6 @@ function UploadComponent() {
     const result = await uploadBlob(
       encryptedBlob,
       seal_policy_id,
-      backupKey,
       metadata
     );
 
