@@ -13,6 +13,15 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/stats',
+        destination: '/tokenomics',
+        permanent: true,
+      },
+    ];
+  },
   experimental: {
     externalDir: true,
     turbopack: {

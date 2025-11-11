@@ -45,8 +45,8 @@ export default function HomePage() {
             <Link href="/marketplace">
               <SonarButton variant="primary">Explore Marketplace</SonarButton>
             </Link>
-            <Link href="/stats">
-              <SonarButton variant="secondary">View Economics</SonarButton>
+            <Link href="/tokenomics">
+              <SonarButton variant="secondary">View Tokenomics</SonarButton>
             </Link>
           </div>
 
