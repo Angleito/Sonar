@@ -257,7 +257,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
                       blobId: result.walrusBlobId,
                       previewBlobId: result.previewBlobId,
                       seal_policy_id: result.seal_policy_id,
-                      backupKey: result.backupKey,
+                      // backupKey: result.backupKey, // TODO: Add to WalrusUploadResult type when backup key encryption is implemented
                       files: result.files, // Multi-file results
                       bundleDiscountBps: result.bundleDiscountBps,
                     };
