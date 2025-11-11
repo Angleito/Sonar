@@ -115,7 +115,7 @@ export function usePurchase(): UsePurchaseReturn {
       );
 
       if (total < requiredAmount) {
-        throw new Error('Insufficient SONAR balance. Use the kiosk flow to acquire SONAR first.');
+        throw new Error('Insufficient SONAR balance. Acquire SNR first.');
       }
 
       // Build transaction
