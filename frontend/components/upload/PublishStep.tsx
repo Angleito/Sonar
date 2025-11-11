@@ -35,11 +35,11 @@ interface PublishStepProps {
   onError: (error: string) => void;
 }
 
-const BURN_FEE_PERCENTAGE = 0.00001; // 0.001% of circulating supply
+const UPLOAD_FEE_MIST = 1_000_000_000; // 1 SUI expressed in MIST (10^-9 SUI)
 
 /**
  * PublishStep Component
- * Handles blockchain submission with burn fee
+ * Handles blockchain submission with fixed upload fee
  */
 export function PublishStep({
   walrusUpload,
@@ -73,8 +73,7 @@ export function PublishStep({
       // Build transaction
       const tx = new Transaction();
 
-      // TODO: Calculate actual burn fee based on circulating supply
-      const burnFee = 1000000; // 0.001 SONAR (placeholder)
+      const uploadFee = UPLOAD_FEE_MIST;
 
       // Check if multi-file dataset
       const isMultiFile = walrusUpload.files && walrusUpload.files.length > 0;
@@ -92,7 +91,7 @@ export function PublishStep({
           target: `${CHAIN_CONFIG.packageId}::marketplace::submit_audio_dataset`,
           arguments: [
             tx.object(CHAIN_CONFIG.marketplaceId),
-            tx.splitCoins(tx.gas, [burnFee])[0], // burn_fee
+            tx.splitCoins(tx.gas, [uploadFee])[0], // upload_fee
             tx.pure.vector('string', blobIds),
             tx.pure.vector('string', previewBlobIds),
             tx.pure.vector('string', sealPolicyIds),
@@ -110,7 +109,7 @@ export function PublishStep({
             tx.pure.string(walrusUpload.seal_policy_id), // Seal policy ID for decryption
             tx.pure.option('vector<u8>', null), // preview_blob_hash (optional)
             tx.pure.u64(3600), // duration_seconds (placeholder - should come from audioFile)
-            tx.splitCoins(tx.gas, [burnFee])[0], // burn_fee
+            tx.splitCoins(tx.gas, [uploadFee])[0], // upload_fee
           ],
         });
       }
@@ -350,16 +349,16 @@ export function PublishStep({
             </div>
           </GlassCard>
 
-          {/* Burn Fee Info */}
+          {/* Upload Fee Info */}
           <GlassCard className="bg-sonar-blue/5">
             <div className="flex items-start space-x-4">
               <Coins className="w-6 h-6 text-sonar-blue mt-0.5" />
               <div className="flex-1">
                 <h4 className="font-mono font-semibold text-sonar-blue mb-2">
-                  Burn Fee Required
+                  Upload Fee Required
                 </h4>
                 <p className="text-sm text-sonar-highlight/80 mb-3">
-                  A small burn fee of <span className="text-sonar-signal font-mono">0.001 SONAR</span> is required to publish your dataset. This helps maintain the protocol's tokenomics.
+                  A fixed upload fee of <span className="text-sonar-signal font-mono">1&nbsp;SUI</span> is required to publish your dataset on mainnet. This helps prevent spam uploads while tokenomics launch is pending.
                 </p>
                 <div className="p-3 rounded-sonar bg-sonar-abyss/30">
                   <div className="flex justify-between items-center">
@@ -367,7 +366,7 @@ export function PublishStep({
                       Estimated Fee:
                     </span>
                     <span className="font-mono font-bold text-sonar-signal">
-                      0.001 SONAR
+                      1 SUI
                     </span>
                   </div>
                 </div>

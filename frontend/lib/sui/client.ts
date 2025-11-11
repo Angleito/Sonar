@@ -7,13 +7,30 @@ const MAINNET_PACKAGE_ID = '0xc05ced8197d798ce8b49d2043c52823696736232ab9a4d2e93
 const MAINNET_MARKETPLACE_ID = '0xaa422269e77e2197188f9c8e47ffb3faf21c0bafff1d5d04ea9613acc4994bb4';
 
 const determineNetwork = (): 'mainnet' | 'testnet' | 'devnet' => {
-  const envNetwork = process.env.NEXT_PUBLIC_NETWORK;
-  if (envNetwork === 'mainnet' || envNetwork === 'testnet' || envNetwork === 'devnet') {
-    return envNetwork;
+  const candidates: Array<[string, string | undefined]> = [
+    ['NEXT_PUBLIC_NETWORK', process.env.NEXT_PUBLIC_NETWORK],
+    ['NEXT_PUBLIC_SUI_NETWORK', process.env.NEXT_PUBLIC_SUI_NETWORK],
+    ['NEXT_PUBLIC_CHAIN_NETWORK', process.env.NEXT_PUBLIC_CHAIN_NETWORK],
+  ];
+
+  let warned = false;
+  for (const [key, rawValue] of candidates) {
+    if (!rawValue) continue;
+
+    const normalized = rawValue.trim().toLowerCase();
+    if (normalized === 'mainnet' || normalized === 'testnet' || normalized === 'devnet') {
+      return normalized;
+    }
+
+    if (!warned) {
+      console.warn(`[sui/client] Ignoring ${key}="${rawValue}" (expected mainnet, testnet, or devnet).`);
+      warned = true;
+    }
   }
 
-  const pkg = process.env.NEXT_PUBLIC_PACKAGE_ID?.toLowerCase();
-  if (pkg === MAINNET_PACKAGE_ID) {
+  const pkg = process.env.NEXT_PUBLIC_PACKAGE_ID?.trim().toLowerCase();
+  const marketplace = process.env.NEXT_PUBLIC_MARKETPLACE_ID?.trim().toLowerCase();
+  if (pkg === MAINNET_PACKAGE_ID || marketplace === MAINNET_MARKETPLACE_ID) {
     return 'mainnet';
   }
 

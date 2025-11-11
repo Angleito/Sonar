@@ -7,7 +7,7 @@ set -e
 
 PACKAGE_ID="${NEXT_PUBLIC_PACKAGE_ID:-0x300b8182eea252a00d5ff19568126cc20c0bdd19c7e25f6c6953363393d344e6}"
 MARKETPLACE_ID="${NEXT_PUBLIC_MARKETPLACE_ID:-0xaa422269e77e2197188f9c8e47ffb3faf21c0bafff1d5d04ea9613acc4994bb4}"
-BURN_FEE="1000000"  # 0.001 SONAR
+UPLOAD_FEE="1000000000"  # 1 SUI expressed in MIST (10^-9 SUI)
 
 TITLE="${1:-Test Audio Submission}"
 BLOB_ID="${2:-test_blob_$(date +%s)}"
@@ -24,24 +24,12 @@ echo "🔐 Seal Policy: $SEAL_POLICY"
 echo "⏱️  Duration: ${DURATION}s"
 echo ""
 
-# Get a SONAR coin
-SONAR_COIN=$(sui client objects --json | jq -r '.[] | select(.data.type | contains("SONAR_TOKEN")) | .data.objectId' | head -1)
-
-if [ -z "$SONAR_COIN" ]; then
-    echo "❌ No SONAR tokens found"
-    exit 1
-fi
-
-echo "💎 Using SONAR coin: $SONAR_COIN"
-echo ""
-
 # Build and execute transaction
-# Note: For Option<vector<u8>>, we need to split the coin for burn fee first
+# Note: For Option<vector<u8>>, we need to split the gas coin for the upload fee first
 sui client ptb \
-    --assign burn_coin "@$SONAR_COIN" \
-    --split-coins burn_coin "[1000000]" \
-    --assign burn_split \
-    --move-call "$PACKAGE_ID::marketplace::submit_audio" "$MARKETPLACE_ID" burn_split "\"$BLOB_ID\"" "\"$SEAL_POLICY\"" "none" "$DURATION" \
+    --split-gas "[${UPLOAD_FEE}]" \
+    --assign upload_fee \
+    --move-call "$PACKAGE_ID::marketplace::submit_audio" "$MARKETPLACE_ID" upload_fee "\"$BLOB_ID\"" "\"$SEAL_POLICY\"" "none" "$DURATION" \
     --gas-budget 100000000
 
 echo ""

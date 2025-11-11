@@ -76,22 +76,6 @@ async function main() {
       process.exit(1);
     }
 
-    // Get SONAR token balance
-    console.log('🔍 Checking SONAR token balance...');
-    const sonarCoins = await client.getCoins({
-      owner: address,
-      coinType: `${PACKAGE_ID}::sonar_token::SONAR_TOKEN`,
-    });
-
-    if (sonarCoins.data.length === 0) {
-      console.error('❌ No SONAR tokens found. You need SONAR tokens to pay the burn fee.');
-      console.log('   Mint some tokens first or contact the team for testnet tokens.\n');
-      process.exit(1);
-    }
-
-    const totalSonar = sonarCoins.data.reduce((sum, coin) => sum + BigInt(coin.balance), BigInt(0));
-    console.log(`💎 SONAR Balance: ${Number(totalSonar) / 1e9} SONAR\n`);
-
     // Create submissions
     console.log(`📝 Creating ${TEST_DATASETS.length} test submissions...\n`);
 
@@ -101,19 +85,17 @@ async function main() {
       const tx = new Transaction();
       tx.setGasBudget(100000000); // 0.1 SUI
 
-      // Get a SONAR coin for burn fee (using smallest available)
-      const sonarCoin = sonarCoins.data.sort((a, b) => Number(BigInt(a.balance) - BigInt(b.balance)))[0];
-      const burnFee = 1000000; // 0.001 SONAR
+      const uploadFee = 1_000_000_000; // 1 SUI expressed in MIST (10^-9 SUI)
 
-      // Split coins for burn fee
-      const [burnCoin] = tx.splitCoins(tx.object(sonarCoin.coinObjectId), [burnFee]);
+      // Split gas for the upload fee
+      const [uploadFeeCoin] = tx.splitCoins(tx.gas, [uploadFee]);
 
       // Call submit_audio
       tx.moveCall({
         target: `${PACKAGE_ID}::marketplace::submit_audio`,
         arguments: [
           tx.object(MARKETPLACE_ID),
-          burnCoin,
+          uploadFeeCoin,
           tx.pure.string(dataset.walrus_blob_id),
           tx.pure.string(dataset.seal_policy_id),
           tx.pure.option('vector<u8>', null), // No preview hash
