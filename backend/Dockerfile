@@ -24,7 +24,6 @@ WORKDIR /app
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages ./packages
-COPY --from=deps /app/backend/node_modules ./backend/node_modules
 
 # Copy source code
 COPY packages/shared ./packages/shared
@@ -41,7 +40,6 @@ WORKDIR /app
 
 # Copy production dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/backend/node_modules ./backend/node_modules
 
 # Copy built artifacts and source
 COPY --from=builder /app/packages/shared ./packages/shared
