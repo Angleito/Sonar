@@ -11,10 +11,13 @@ interface PurchaseSimulatorProps {
 }
 
 export function PurchaseSimulator({ currentSupply, snrPriceUsd }: PurchaseSimulatorProps) {
-  const [purchaseAmount, setPurchaseAmount] = useState<string>('100');
+  const [datasetPrice, setDatasetPrice] = useState<string>('1000'); // Price in SNR tokens
   const [results, setResults] = useState<{
-    tokensReceived: number;
-    amountBurned: number;
+    datasetPrice: number;
+    uploadBurn: number;
+    purchaseBurn: number;
+    totalBurned: number;
+    creatorReceives: number;
     burnRate: number;
     newSupply: number;
     tierBefore: TierInfo;
@@ -23,74 +26,80 @@ export function PurchaseSimulator({ currentSupply, snrPriceUsd }: PurchaseSimula
   } | null>(null);
 
   useEffect(() => {
-    const amount = parseFloat(purchaseAmount);
-    if (isNaN(amount) || amount <= 0) {
+    const price = parseFloat(datasetPrice);
+    if (isNaN(price) || price <= 0) {
       setResults(null);
       return;
     }
 
-    // Calculate tokens based on purchase amount
-    const totalTokens = amount / snrPriceUsd;
+    // Calculate upload burn (0.001% of circulating supply)
+    const uploadBurn = currentSupply * 0.00001;
 
-    // Get current tier
+    // Get current tier for purchase burn
     const tierBefore = getTierInfo(currentSupply);
-    const burnRate = tierBefore.burnRate;
+    const burnRate = tierBefore.burnRate * 100; // Convert to percentage
 
-    // Calculate burn
-    const amountBurned = totalTokens * (burnRate / 100);
-    const tokensReceived = totalTokens - amountBurned;
+    // Calculate purchase burn from dataset sale
+    const purchaseBurn = price * tierBefore.burnRate;
+    const creatorReceives = price - purchaseBurn;
 
-    // New supply after burn
-    const newSupply = currentSupply - amountBurned;
+    // Total burns from both upload and purchase
+    const totalBurned = uploadBurn + purchaseBurn;
+
+    // New supply after both burns
+    const newSupply = currentSupply - totalBurned;
     const tierAfter = getTierInfo(newSupply);
 
     setResults({
-      tokensReceived,
-      amountBurned,
+      datasetPrice: price,
+      uploadBurn,
+      purchaseBurn,
+      totalBurned,
+      creatorReceives,
       burnRate,
       newSupply,
       tierBefore,
       tierAfter,
       tierChanged: tierBefore.level !== tierAfter.level,
     });
-  }, [purchaseAmount, currentSupply, snrPriceUsd]);
+  }, [datasetPrice, currentSupply]);
 
   return (
     <GlassCard>
       <div className="space-y-6">
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-mono text-sonar-highlight">Purchase Simulator</h3>
+            <h3 className="text-xl font-mono text-sonar-highlight">Dataset Lifecycle Simulator</h3>
             <span className="text-xs px-2 py-1 bg-sonar-signal/20 text-sonar-signal border border-sonar-signal/30 rounded-sonar">
               INTERACTIVE
             </span>
           </div>
           <p className="text-sm text-sonar-highlight-bright/70">
-            Enter a purchase amount to see real-time burn calculations and tier impacts
+            SNR tokens are burned at TWO points: when creators upload datasets AND when buyers purchase them
           </p>
         </div>
 
         {/* Input */}
         <div>
           <label className="block text-sm font-mono text-sonar-highlight-bright/80 mb-2">
-            Purchase Amount (USD)
+            Dataset Price (SNR tokens)
           </label>
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sonar-highlight-bright/50">
-              $
-            </span>
             <input
               type="number"
-              value={purchaseAmount}
-              onChange={(e) => setPurchaseAmount(e.target.value)}
-              placeholder="100"
+              value={datasetPrice}
+              onChange={(e) => setDatasetPrice(e.target.value)}
+              placeholder="1000"
               min="0"
-              step="10"
-              className="w-full pl-8 pr-4 py-3 bg-sonar-abyss/50 border border-sonar-signal/30 rounded-sonar text-sonar-highlight font-mono focus:outline-none focus:border-sonar-signal/60 focus:ring-2 focus:ring-sonar-signal/20 transition-all"
+              step="100"
+              className="w-full pl-4 pr-16 py-3 bg-sonar-abyss/50 border border-sonar-signal/30 rounded-sonar text-sonar-highlight font-mono focus:outline-none focus:border-sonar-signal/60 focus:ring-2 focus:ring-sonar-signal/20 transition-all"
             />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sonar-highlight-bright/50 font-mono">
+              SNR
+            </span>
           </div>
           <p className="text-xs text-sonar-highlight-bright/50 mt-1">
-            Current SNR price: ${snrPriceUsd.toFixed(4)}
+            When a user buys a dataset priced at this many SNR tokens
           </p>
         </div>
 
@@ -114,69 +123,85 @@ export function PurchaseSimulator({ currentSupply, snrPriceUsd }: PurchaseSimula
 
             {/* Calculation Results */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-sonar-signal/10 border border-sonar-signal/30 rounded-sonar">
-                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">You Receive</p>
-                <p className="text-2xl font-mono font-bold text-sonar-signal">
-                  {formatNumber(results.tokensReceived)}
+              <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-sonar">
+                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">Upload Burn</p>
+                <p className="text-2xl font-mono font-bold text-yellow-400">
+                  {formatNumber(results.uploadBurn)}
                 </p>
-                <p className="text-xs text-sonar-highlight-bright/50 mt-1">SNR tokens</p>
+                <p className="text-xs text-sonar-highlight-bright/50 mt-1">0.001% of supply</p>
               </div>
 
               <div className="p-4 bg-sonar-coral/10 border border-sonar-coral/30 rounded-sonar">
-                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">Burned</p>
+                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">Purchase Burn</p>
                 <p className="text-2xl font-mono font-bold text-sonar-coral">
-                  {formatNumber(results.amountBurned)}
+                  {formatNumber(results.purchaseBurn)}
                 </p>
-                <p className="text-xs text-sonar-highlight-bright/50 mt-1">SNR tokens</p>
+                <p className="text-xs text-sonar-highlight-bright/50 mt-1">{results.burnRate.toFixed(0)}% of sale</p>
               </div>
 
-              <div className="p-4 bg-sonar-highlight/10 border border-sonar-highlight/30 rounded-sonar">
-                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">Current Burn Rate</p>
-                <p className="text-2xl font-mono font-bold text-sonar-highlight">
-                  {results.burnRate}%
+              <div className="p-4 bg-sonar-signal/10 border border-sonar-signal/30 rounded-sonar">
+                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">Creator Receives</p>
+                <p className="text-2xl font-mono font-bold text-sonar-signal">
+                  {formatNumber(results.creatorReceives)}
                 </p>
-                <p className="text-xs text-sonar-highlight-bright/50 mt-1">Tier {results.tierBefore.level}</p>
+                <p className="text-xs text-sonar-highlight-bright/50 mt-1">After purchase burn</p>
               </div>
 
               <div className="p-4 bg-sonar-abyss/50 border border-white/10 rounded-sonar">
-                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">New Supply</p>
+                <p className="text-xs text-sonar-highlight-bright/60 mb-1 font-mono">Total Burned</p>
                 <p className="text-2xl font-mono font-bold text-sonar-highlight-bright">
-                  {formatNumber(results.newSupply)}
+                  {formatNumber(results.totalBurned)}
                 </p>
                 <p className="text-xs text-sonar-highlight-bright/50 mt-1">
-                  {((results.amountBurned / currentSupply) * 100).toFixed(2)}% reduction
+                  {((results.totalBurned / currentSupply) * 100).toFixed(4)}% reduction
                 </p>
               </div>
             </div>
 
             {/* Breakdown */}
             <div className="p-4 bg-sonar-abyss/30 border border-white/5 rounded-sonar space-y-2">
-              <p className="text-xs font-mono text-sonar-highlight-bright/60 mb-2">Calculation Breakdown</p>
-              <div className="space-y-1 text-xs font-mono text-sonar-highlight-bright/70">
-                <div className="flex justify-between">
-                  <span>Purchase Amount:</span>
-                  <span className="text-sonar-highlight">${parseFloat(purchaseAmount).toFixed(2)}</span>
+              <p className="text-xs font-mono text-sonar-highlight-bright/60 mb-2">Complete Lifecycle</p>
+              <div className="space-y-2">
+                <div className="pb-2 border-b border-white/5">
+                  <p className="text-xs text-yellow-300/80 font-semibold mb-1">1. Upload Phase</p>
+                  <div className="flex justify-between text-xs font-mono text-sonar-highlight-bright/70">
+                    <span>Creator burns to list:</span>
+                    <span className="text-yellow-400">-{formatNumber(results.uploadBurn)} SNR</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span>Total Tokens (pre-burn):</span>
-                  <span className="text-sonar-highlight">{formatNumber(results.tokensReceived + results.amountBurned)} SNR</span>
+
+                <div className="pb-2 border-b border-white/5">
+                  <p className="text-xs text-sonar-coral font-semibold mb-1">2. Purchase Phase</p>
+                  <div className="space-y-1 text-xs font-mono text-sonar-highlight-bright/70">
+                    <div className="flex justify-between">
+                      <span>Dataset Price:</span>
+                      <span className="text-sonar-highlight">{formatNumber(results.datasetPrice)} SNR</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Purchase Burn ({results.burnRate.toFixed(0)}%):</span>
+                      <span className="text-sonar-coral">-{formatNumber(results.purchaseBurn)} SNR</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Creator Receives:</span>
+                      <span className="text-sonar-signal">{formatNumber(results.creatorReceives)} SNR</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between border-t border-white/5 pt-2">
-                  <span>Burn ({results.burnRate}%):</span>
-                  <span className="text-sonar-coral">-{formatNumber(results.amountBurned)} SNR</span>
-                </div>
-                <div className="flex justify-between font-semibold">
-                  <span>You Receive:</span>
-                  <span className="text-sonar-signal">{formatNumber(results.tokensReceived)} SNR</span>
+
+                <div className="pt-1">
+                  <div className="flex justify-between text-xs font-mono font-semibold">
+                    <span>Total Ecosystem Burn:</span>
+                    <span className="text-sonar-highlight-bright">{formatNumber(results.totalBurned)} SNR</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {!results && purchaseAmount && (
+        {!results && datasetPrice && (
           <div className="text-center py-8 text-sonar-highlight-bright/50 text-sm">
-            Enter a valid purchase amount to see calculations
+            Enter a valid dataset price to see burn calculations
           </div>
         )}
       </div>

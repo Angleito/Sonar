@@ -58,7 +58,7 @@ export default function TokenomicsPage() {
           </h1>
           <div className="space-y-3">
             <p className="text-xl text-sonar-highlight-bright/80">
-              Interactive demonstration of burn mechanisms and tier dynamics
+              Dual-burn tokenomics: SNR burns on upload AND purchase
             </p>
             <div className="inline-flex items-center gap-3 px-4 py-2 bg-sonar-signal/10 border border-sonar-signal/30 rounded-sonar">
               <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
@@ -79,7 +79,7 @@ export default function TokenomicsPage() {
               </span>
             </div>
             <p className="text-sm text-sonar-highlight-bright/70 mb-6">
-              Explore how the SNR token burn mechanisms would work through interactive simulations
+              SNR tokens burn at two critical points: when creators upload datasets (0.001% of supply) and when buyers purchase them (tier-based %)
             </p>
 
             {/* Purchase Simulator */}

@@ -44,10 +44,16 @@ export function TimeSimulation({ initialSupply, snrPriceUsd }: TimeSimulationPro
       let dayBurned = 0;
 
       for (let i = 0; i < purchasesPerDay; i++) {
+        // Upload burn (0.001% of current supply)
+        const uploadBurn = newSupply * 0.00001;
+        newSupply -= uploadBurn;
+        dayBurned += uploadBurn;
+
+        // Purchase burn (tier-based percentage)
         const tier = getTierInfo(newSupply);
-        const burnAmount = tokensPerPurchase * (tier.burnRate / 100);
-        newSupply -= burnAmount;
-        dayBurned += burnAmount;
+        const purchaseBurn = tokensPerPurchase * tier.burnRate;
+        newSupply -= purchaseBurn;
+        dayBurned += purchaseBurn;
       }
 
       const newTier = getTierInfo(newSupply);
@@ -98,13 +104,13 @@ export function TimeSimulation({ initialSupply, snrPriceUsd }: TimeSimulationPro
       <div className="space-y-6">
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-mono text-sonar-highlight">Time-Based Simulation</h3>
+            <h3 className="text-xl font-mono text-sonar-highlight">Dataset Purchase Simulation</h3>
             <span className="text-xs px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded-sonar">
               ANIMATED
             </span>
           </div>
           <p className="text-sm text-sonar-highlight-bright/70">
-            Watch how repeated purchases affect supply and trigger tier transitions over time
+            Watch how dataset uploads and purchases burn SNR tokens over time (both upload + purchase burns)
           </p>
         </div>
 
@@ -112,7 +118,7 @@ export function TimeSimulation({ initialSupply, snrPriceUsd }: TimeSimulationPro
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-mono text-sonar-highlight-bright/70 mb-2">
-              Avg Purchase Size (USD)
+              Avg Dataset Price (USD)
             </label>
             <input
               type="range"
@@ -129,7 +135,7 @@ export function TimeSimulation({ initialSupply, snrPriceUsd }: TimeSimulationPro
 
           <div>
             <label className="block text-xs font-mono text-sonar-highlight-bright/70 mb-2">
-              Purchases per Day
+              Dataset Sales per Day
             </label>
             <input
               type="range"

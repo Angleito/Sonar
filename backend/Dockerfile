@@ -37,12 +37,9 @@ FROM oven/bun:1.2-slim
 
 WORKDIR /app
 
-# Install production dependencies only
-COPY package.json bun.lock ./
-COPY packages/shared/package.json ./packages/shared/
-COPY backend/package.json ./backend/
-
-RUN bun install --frozen-lockfile --production
+# Copy production dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/backend/node_modules ./backend/node_modules
 
 # Copy built artifacts and source
 COPY --from=builder /app/packages/shared ./packages/shared

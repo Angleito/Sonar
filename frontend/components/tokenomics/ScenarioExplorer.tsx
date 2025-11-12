@@ -29,6 +29,8 @@ export function ScenarioExplorer({ defaultInitialSupply, snrPriceUsd }: Scenario
     // Run scenario simulation
     let currentSupply = initialSupply;
     let totalBurned = 0;
+    let totalUploadBurns = 0;
+    let totalPurchaseBurns = 0;
     const purchasesPerDay = totalPurchases / timeHorizonDays;
     const tierTransitions: { day: number; fromTier: number; toTier: number }[] = [];
     let lastTier = getTierInfo(currentSupply).level;
@@ -37,12 +39,20 @@ export function ScenarioExplorer({ defaultInitialSupply, snrPriceUsd }: Scenario
       let dayBurned = 0;
 
       for (let i = 0; i < purchasesPerDay; i++) {
+        // Upload burn (0.001% of current supply)
+        const uploadBurn = currentSupply * 0.00001;
+        currentSupply -= uploadBurn;
+        dayBurned += uploadBurn;
+        totalUploadBurns += uploadBurn;
+
+        // Purchase burn (tier-based)
         const tier = getTierInfo(currentSupply);
         const tokensPerPurchase = avgPurchaseSize / snrPriceUsd;
-        const burnAmount = tokensPerPurchase * (tier.burnRate / 100);
+        const purchaseBurn = tokensPerPurchase * tier.burnRate;
 
-        currentSupply -= burnAmount;
-        dayBurned += burnAmount;
+        currentSupply -= purchaseBurn;
+        dayBurned += purchaseBurn;
+        totalPurchaseBurns += purchaseBurn;
 
         // Track tier changes
         const newTier = getTierInfo(currentSupply).level;
@@ -84,7 +94,7 @@ export function ScenarioExplorer({ defaultInitialSupply, snrPriceUsd }: Scenario
             </span>
           </div>
           <p className="text-sm text-sonar-highlight-bright/70">
-            Adjust parameters to explore different tokenomics scenarios and outcomes
+            Model how dataset marketplace activity would affect SNR token supply over time
           </p>
         </div>
 
@@ -118,11 +128,11 @@ export function ScenarioExplorer({ defaultInitialSupply, snrPriceUsd }: Scenario
             </div>
           </div>
 
-          {/* Average Purchase Size */}
+          {/* Average Dataset Price */}
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-xs font-mono text-sonar-highlight-bright/70">
-                Average Purchase Size (USD)
+                Average Dataset Price (USD)
               </label>
               <span className="text-sm font-mono text-sonar-highlight">${avgPurchaseSize}</span>
             </div>
@@ -144,11 +154,11 @@ export function ScenarioExplorer({ defaultInitialSupply, snrPriceUsd }: Scenario
             </div>
           </div>
 
-          {/* Total Purchases */}
+          {/* Total Dataset Sales */}
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-xs font-mono text-sonar-highlight-bright/70">
-                Total Purchases in Period
+                Total Dataset Sales in Period
               </label>
               <span className="text-sm font-mono text-sonar-highlight">{totalPurchases}x</span>
             </div>
