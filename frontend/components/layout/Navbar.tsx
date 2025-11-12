@@ -21,6 +21,7 @@ export function Navbar() {
     { href: '/', label: 'Home' },
     { href: '/marketplace', label: 'Marketplace' },
     { href: '/roadmap', label: 'Roadmap' },
+    { href: '/tokenomics', label: 'Tokenomics' },
   ];
 
   return (

@@ -53,7 +53,8 @@ RUN chmod +x /app/start.sh /app/scripts/verify-config.sh
 
 # Create non-root user for runtime
 RUN useradd --create-home --shell /usr/sbin/nologin --uid 10001 keyserver && \
-    chown -R keyserver:root /app /opt/key-server
+    chown -R keyserver:root /app /opt/key-server && \
+    chmod 755 /app/config
 
 USER keyserver
 ENV HOME=/home/keyserver
