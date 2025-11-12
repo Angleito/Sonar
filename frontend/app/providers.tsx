@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RepositoryProvider } from '@/providers/repository-provider';
 import { SuiClientProvider, WalletProvider } from '@mysten/dapp-kit';
 import { getFullnodeUrl } from '@mysten/sui/client';
+import { NETWORK, RPC_URL } from '@/lib/sui/client';
 import { useState } from 'react';
 import { Toaster } from 'sonner';
 import '@mysten/dapp-kit/dist/index.css';
@@ -34,14 +35,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   // Sui network configuration
   const networks = {
-    testnet: { url: getFullnodeUrl('testnet') },
-    mainnet: { url: getFullnodeUrl('mainnet') },
-    devnet: { url: getFullnodeUrl('devnet') },
-  };
+    testnet: { url: NETWORK === 'testnet' ? RPC_URL : getFullnodeUrl('testnet') },
+    mainnet: { url: NETWORK === 'mainnet' ? RPC_URL : getFullnodeUrl('mainnet') },
+    devnet: { url: NETWORK === 'devnet' ? RPC_URL : getFullnodeUrl('devnet') },
+  } satisfies Record<'testnet' | 'mainnet' | 'devnet', { url: string }>;
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SuiClientProvider networks={networks} defaultNetwork="testnet">
+      <SuiClientProvider networks={networks} defaultNetwork={NETWORK}>
         <WalletProvider autoConnect>
           <RepositoryProvider>{children}</RepositoryProvider>
           <Toaster

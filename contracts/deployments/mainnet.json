@@ -1,14 +1,18 @@
 {
   "network": "mainnet",
-  "packageId": "0xc05ced8197d798ce8b49d2043c52823696736232ab9a4d2e93e7b5b4e8b1466e",
-  "version": 2,
-  "upgradeDigest": "4Q3bfdanmfBvgywVWk1hehSz6RKfEkvYGKPLns8jKgsV",
-  "upgradedAt": "1735742700000",
-  "epoch": 939,
-  "modules": ["economics", "marketplace", "sonar_token"],
+  "packageId": "0xdff609ce3174576c8a0e81c9f65775e7e7fe5b11c5ef375345fab4ca4b837e9d",
+  "version": 1,
+  "upgradeDigest": "BnKYm5N6bkBDM1QMTD545DewnrDMbSCJ3Wi1GLhvVc1k",
+  "upgradedAt": "1762724836730",
+  "epoch": 942,
+  "modules": ["economics", "marketplace", "purchase_policy", "sonar_token"],
   "objects": {
-    "upgradeCap": "0x71d3aed5ef5e502ed075b8fc7c59ce5c7a7b42677ad942a936cca46ab2ec05a1",
-    "marketplace": "0xaa422269e77e2197188f9c8e47ffb3faf21c0bafff1d5d04ea9613acc4994bb4"
+    "upgradeCap": "0x40f4423dc9ad9129476863f3673345a14f9cd57b85b13e66650e903f6e695cbb",
+    "treasuryCap": "0x6675c9836c148300930ecb3f186e5ab04adbe135c4db6b7a65d0dfe058fe95a0",
+    "coinMetadata": "0xe970e1545ebdbb2d9e61ea488a60866fe88202e4950cd8ca999f6a23f477e192",
+    "marketplace": "0xb0c09e28efdf70ccdeff2f7ae008ee23961249802bab9682ad4c812957c6a8c6",
+    "adminCap": "0x1974db8484f69236e77136e2d5da6f2a753a2c07cc016085b8fa87ebc2cacdcf",
+    "validatorCap": "0xe6778a9d4433a8850672a278bb886a789b3335fd4e984a82bb0f7b59cfbd12dc"
   },
   "features": {
     "multiFileDatasets": true,

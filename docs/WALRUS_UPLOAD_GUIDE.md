@@ -1,178 +1,101 @@
-# Walrus Audio Upload Guide
+# Walrus Audio Upload Guide (Testnet)
 
-This guide explains how to upload real 5+ minute audio files to Walrus testnet for the SONAR marketplace.
+_Last reviewed: 2025-11-11_
+
+This guide explains how to prepare 5+ minute audio assets and upload them to Walrus testnet using the helper script in `scripts/upload-to-walrus.sh`. The script enforces the duration requirement and records blob IDs for later on-chain submissions.
 
 ## Prerequisites
 
-### 1. Install Walrus CLI
-
+### 1. Walrus CLI
 ```bash
-# Download Walrus CLI (macOS/Linux)
-curl https://storage.googleapis.com/mysten-walrus-binaries/walrus-testnet-latest-macos-x86_64 -o walrus
+curl -L https://storage.googleapis.com/mysten-walrus-binaries/walrus-testnet-latest-macos-x86_64 -o walrus
 chmod +x walrus
 sudo mv walrus /usr/local/bin/
-
-# Verify installation
 walrus --version
 ```
 
-### 2. Configure Sui Wallet
-
+### 2. Sui CLI (for wallet + faucet)
 ```bash
-# Initialize Sui CLI if not already done
 sui client
-
-# Switch to testnet
 sui client switch --env testnet
-
-# Get testnet SUI tokens from faucet
 sui client faucet
 ```
 
-### 3. Get Audio Files
-
-You need 3 audio files, each at least 5 minutes long. Options:
-
-**Option A: Use Open-Licensed Audio Libraries**
-1. Visit a Creative Commons library (e.g., Free Music Archive, Openverse)
-2. Filter for "ambient" or "soundscape" clips longer than 5 minutes
-3. Download under a license compatible with your use case
-4. Convert to WAV if needed: `ffmpeg -i input.mp3 output.wav`
-
-**Option B: Use Sample Generator**
+### 3. Audio Assets (≥300 seconds)
+Produce at least one 5-minute clip per dataset. Example generators using FFmpeg noise sources:
 ```bash
-# Generate 5-minute white noise (requires ffmpeg)
-ffmpeg -f lavfi -i anoisesrc=duration=300:color=white:sample_rate=44100 -ac 2 ambient_test_1.wav
-ffmpeg -f lavfi -i anoisesrc=duration=330:color=pink:sample_rate=44100 -ac 2 ambient_test_2.wav
-ffmpeg -f lavfi -i anoisesrc=duration=360:color=brown:sample_rate=44100 -ac 2 ambient_test_3.wav
+mkdir -p ~/audio-samples
+cd ~/audio-samples
+ffmpeg -f lavfi -i anoisesrc=duration=320:color=white:sample_rate=44100 -ac 2 ambient_white.wav
+ffmpeg -f lavfi -i anoisesrc=duration=360:color=pink:sample_rate=44100 -ac 2 ambient_pink.wav
+ffmpeg -f lavfi -i anoisesrc=duration=420:color=brown:sample_rate=44100 -ac 2 ambient_brown.wav
 ```
 
-**Option C: Record Your Own**
-- Use Audacity, GarageBand, or any DAW
-- Record 5+ minutes of ambient audio
-- Export as WAV (44.1kHz, stereo)
+## Upload Workflow
 
-## Upload Process
-
-### Step 1: Upload Each File
-
+### Step 1 – Run the helper script
 ```bash
 cd /Users/angel/Projects/sonar/scripts
-
-# Upload file 1
-./upload-to-walrus.sh /path/to/ambient_1.wav
-
-# Upload file 2
-./upload-to-walrus.sh /path/to/ambient_2.wav
-
-# Upload file 3
-./upload-to-walrus.sh /path/to/ambient_3.wav
+./upload-to-walrus.sh ~/audio-samples/ambient_white.wav
 ```
+What the script does:
+- Confirms Walrus CLI exists.
+- Uses `ffprobe` (if available) to enforce ≥300 s duration.
+- Streams the file to Walrus with `walrus store --network testnet --json`.
+- Prints the blob ID and appends `<filename>|<blobId>|<timestamp>` to `walrus-uploads.txt` for bookkeeping.
 
-### Step 2: Record Blob IDs
-
-After each upload, you'll see output like:
-
+Sample output:
 ```
+INFO: Uploading ambient_white.wav (52M) to Walrus testnet...
+INFO: Duration: 320 seconds ✓
 SUCCESS: Uploaded successfully!
 
 Blob ID: Cg4bXHWZD3rmK9QvGPZxp4dMB_SqJUr7kVtF8wN2eL0
-File: ambient_1.wav
+File: ambient_white.wav
 Size: 52M
 
-Record this blob ID:
-  "walrus_blob_id": "Cg4bXHWZD3rmK9QvGPZxp4dMB_SqJUr7kVtF8wN2eL0"
-  "preview_blob_id": "Cg4bXHWZD3rmK9QvGPZxp4dMB_SqJUr7kVtF8wN2eL0_preview"
+INFO: Saved to walrus-uploads.txt
 ```
+Only the encrypted blob ID is returned. Preview blobs are uploaded separately (see Step 3).
 
-### Step 3: Use Blob ID
-
-Use the blob ID when creating datasets through your application or seed scripts.
-
-```json
-{
-  "title": "Ambient Meditation",
-  "walrus_blob_id": "Cg4bXHWZD3rmK9QvGPZxp4dMB_SqJUr7kVtF8wN2eL0",
-  "preview_blob_id": "Cg4bXHWZD3rmK9QvGPZxp4dMB_SqJUr7kVtF8wN2eL0_preview",
-  "duration_seconds": 330
-}
-```
-
-## Verify Upload
-
-Test that your blob is accessible:
-
+### Step 2 – Verify the blob
 ```bash
-# Download and verify
-curl https://aggregator.walrus-testnet.walrus.space/v1/blobs/<YOUR_BLOB_ID> -o test.wav
-
-# Check file
-ffprobe test.wav
+export WALRUS_AGGREGATOR=${NEXT_PUBLIC_WALRUS_AGGREGATOR_URL:-https://aggregator.walrus-testnet.walrus.space}
+BLOB_ID=Cg4bXHWZD3rmK9QvGPZxp4dMB_SqJUr7kVtF8wN2eL0
+curl "$WALRUS_AGGREGATOR/v1/$BLOB_ID" -o verify.wav
+ffprobe verify.wav  # should show 5+ minutes, expected mime
 ```
+
+### Step 3 – Upload a preview (optional but recommended)
+Use the edge preview endpoint to host a 30-second teaser:
+```bash
+# Create a 30-second segment (example)
+ffmpeg -i ambient_white.wav -t 30 -acodec copy ambient_white_preview.wav
+
+# POST to the edge function (runs in Next.js dev or production build)
+curl -X POST \
+  -F "file=@ambient_white_preview.wav" \
+  http://localhost:3000/api/edge/walrus/preview
+```
+Response contains `previewBlobId`; store it alongside the main `blobId` when seeding datasets or submitting on-chain metadata.
+
+### Step 4 – Record metadata
+Capture the following fields for each dataset:
+- `walrus_blob_id` – from Step 1.
+- `preview_blob_id` – from Step 3 (optional but required for hover previews in the UI).
+- `duration_seconds`, `mime_type` – keep in sync with what you submit to the Move contract.
 
 ## Troubleshooting
+- **Walrus CLI missing**: install using the command above.
+- **"Audio file must be at least 5 minutes"**: regenerate or extend the clip (`ffmpeg -stream_loop`).
+- **`walrus store` returns non-zero**: ensure your Sui wallet has enough storage funds (Walrus uses SUI for storage costs). Re-run `sui client faucet`.
+- **Preview upload fails with 400**: file larger than 10 MB. Re-encode with mono or lower sample rate.
+- **Aggregator fetch 404**: Walrus testnet occasionally lags; retry after the certification epoch or confirm blob ID spelling.
 
-### Error: "Insufficient funds"
-```bash
-# Get more testnet SUI
-sui client faucet
-```
-
-### Error: "File too large"
-```bash
-# Compress audio (reduce to mono, lower sample rate)
-ffmpeg -i input.wav -ac 1 -ar 22050 output.wav
-```
-
-### Error: "Duration too short"
-```bash
-# Check duration
-ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 file.wav
-
-# Must be >= 300 seconds (5 minutes)
-```
-
-## Cost Estimate
-
-Approximate costs for testnet (testnet SUI is free from faucet):
-
-- 50MB audio file: ~0.05 SUI storage cost
-- Total for 3 files: ~0.15 SUI
-- Storage period: 30 days (testnet)
-
-## Example Workflow
-
-```bash
-# 1. Generate 3 test audio files
-cd ~/audio
-ffmpeg -f lavfi -i anoisesrc=duration=330:color=white -ac 2 test1.wav
-ffmpeg -f lavfi -i anoisesrc=duration=375:color=pink -ac 2 test2.wav
-ffmpeg -f lavfi -i anoisesrc=duration=300:color=brown -ac 2 test3.wav
-
-# 2. Upload to Walrus
-cd /Users/angel/Projects/sonar/scripts
-./upload-to-walrus.sh ~/audio/test1.wav
-./upload-to-walrus.sh ~/audio/test2.wav
-./upload-to-walrus.sh ~/audio/test3.wav
-
-# 3. Record blob IDs from output
-
-# 4. Verify in frontend
-cd /Users/angel/Projects/sonar/frontend
-bun run dev
-# Visit http://localhost:3000/marketplace
-```
-
-## Next Steps
-
-After uploading real audio:
-1. Test preview playback in frontend
-2. Test full audio download after purchase
-3. Verify Walrus aggregator serves files correctly
-4. Run integration tests
+## Storage Cost (Testnet)
+Walrus testnet uses faucet-funded SUI; real costs are not enforced. Expect ~0.05 SUI per 50 MB blob. On mainnet, consult Walrus docs for current pricing.
 
 ## References
-
-- Walrus Documentation: https://docs.walrus.site
-- Walrus Testnet Aggregator: https://aggregator.walrus-testnet.walrus.space
-- FFmpeg Documentation: https://ffmpeg.org/documentation.html
+- Walrus Docs: https://docs.walrus.site
+- Mysten Seal Docs: https://docs.sui.io/concepts/cryptography/seal
+- Helper script source: `scripts/upload-to-walrus.sh`

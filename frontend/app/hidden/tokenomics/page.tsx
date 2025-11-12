@@ -1,5 +1,7 @@
 'use client';
 
+import { useProtocolStats } from '@/hooks/useProtocolStats';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { SonarBackground } from '@/components/animations/SonarBackground';
 import { TierCard } from '@/components/economics/TierCard';
@@ -9,16 +11,46 @@ import { PurchaseSimulator } from '@/components/tokenomics/PurchaseSimulator';
 import { TimeSimulation } from '@/components/tokenomics/TimeSimulation';
 import { ScenarioExplorer } from '@/components/tokenomics/ScenarioExplorer';
 import { getTierInfo, getAllTierConfigs } from '@/lib/tier-utils';
-import type { ProtocolStats } from '@/types/blockchain';
 
 /**
- * Tokenomics Dashboard Page
- * Interactive demonstration of SNR token burn mechanisms
- * All data is mock/demo for hackathon showcase
+ * Tokenomics Workbench (Hidden)
+ * Internal dashboard for iterating on SNR launch mechanics.
+ * Not linked from the public navigation until token launch.
  */
-export default function TokenomicsPage() {
-  // Mock SNR token data for demonstration
-  const mockSNR = {
+export default function TokenomicsWorkbenchPage() {
+  const { data: stats, isLoading, error } = useProtocolStats();
+
+  if (isLoading) {
+    return (
+      <main className="relative min-h-screen">
+        <SonarBackground opacity={0.2} intensity={0.4} />
+        <div className="relative z-10 container mx-auto px-6 py-12">
+          <div className="flex justify-center items-center min-h-[60vh]">
+            <LoadingSpinner />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !stats) {
+    return (
+      <main className="relative min-h-screen">
+        <SonarBackground opacity={0.2} intensity={0.4} />
+        <div className="relative z-10 container mx-auto px-6 py-12">
+          <GlassCard className="text-center py-12">
+            <p className="text-sonar-coral text-lg mb-2">Failed to load protocol statistics</p>
+            <p className="text-sm text-sonar-highlight-bright/50">
+              {error?.message || 'Unknown error'}
+            </p>
+          </GlassCard>
+        </div>
+      </main>
+    );
+  }
+
+  // Hypothetical SNR token data for demonstration
+  const hypotheticalSNR = {
     initialSupply: 80000000, // 80M SNR
     circulatingSupply: 75000000, // 75M SNR (for interactive demos)
     circulatingSupplyBigInt: BigInt(75000000), // For ProtocolStats type
@@ -27,22 +59,7 @@ export default function TokenomicsPage() {
     priceUsd: 0.05, // $0.05 per SNR
   };
 
-  // Mock protocol stats for display
-  const mockStats: ProtocolStats = {
-    circulating_supply: mockSNR.circulatingSupplyBigInt,
-    initial_supply: BigInt(mockSNR.initialSupply),
-    total_burned: mockSNR.totalBurnedBigInt,
-    current_tier: 1,
-    burn_rate: 60,
-    liquidity_rate: 20,
-    uploader_rate: 15,
-    total_datasets: 47,
-    total_purchases: 156,
-    active_creators: 23,
-    total_volume: BigInt(12450),
-  };
-
-  const currentTier = getTierInfo(mockSNR.circulatingSupply);
+  const currentTier = getTierInfo(hypotheticalSNR.circulatingSupply);
   const allTiers = getAllTierConfigs();
 
   return (
@@ -54,7 +71,7 @@ export default function TokenomicsPage() {
         {/* Page Header */}
         <div className="max-w-6xl mx-auto mb-12">
           <h1 className="text-5xl font-mono tracking-radar text-sonar-highlight mb-4">
-            SNR Tokenomics
+            SNR Tokenomics Workbench
           </h1>
           <div className="space-y-3">
             <p className="text-xl text-sonar-highlight-bright/80">
@@ -63,7 +80,7 @@ export default function TokenomicsPage() {
             <div className="inline-flex items-center gap-3 px-4 py-2 bg-sonar-signal/10 border border-sonar-signal/30 rounded-sonar">
               <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
               <p className="text-sm text-sonar-highlight-bright/90">
-                <span className="font-semibold">Demo Mode:</span> Token not yet launched • Currently in hackathon phase • Finalizing launch details
+                <span className="font-semibold">Internal:</span> Token launch preparations in progress. Page is not publicly linked.
               </p>
             </div>
           </div>
@@ -85,24 +102,24 @@ export default function TokenomicsPage() {
             {/* Purchase Simulator */}
             <div className="mb-6">
               <PurchaseSimulator
-                currentSupply={mockSNR.circulatingSupply}
-                snrPriceUsd={mockSNR.priceUsd}
+                currentSupply={hypotheticalSNR.circulatingSupply}
+                snrPriceUsd={hypotheticalSNR.priceUsd}
               />
             </div>
 
             {/* Time-based Simulation */}
             <div className="mb-6">
               <TimeSimulation
-                initialSupply={mockSNR.circulatingSupply}
-                snrPriceUsd={mockSNR.priceUsd}
+                initialSupply={hypotheticalSNR.circulatingSupply}
+                snrPriceUsd={hypotheticalSNR.priceUsd}
               />
             </div>
 
             {/* Scenario Explorer */}
             <div>
               <ScenarioExplorer
-                defaultInitialSupply={mockSNR.initialSupply}
-                snrPriceUsd={mockSNR.priceUsd}
+                defaultInitialSupply={hypotheticalSNR.initialSupply}
+                snrPriceUsd={hypotheticalSNR.priceUsd}
               />
             </div>
           </section>
@@ -117,7 +134,11 @@ export default function TokenomicsPage() {
             </div>
             <TierCard
               tier={currentTier}
-              stats={mockStats}
+              stats={{
+                ...stats,
+                circulating_supply: hypotheticalSNR.circulatingSupplyBigInt,
+                total_burned: hypotheticalSNR.totalBurnedBigInt,
+              }}
               highlighted
             />
           </section>
@@ -131,7 +152,11 @@ export default function TokenomicsPage() {
               </span>
             </div>
             <TokenEconomics
-              stats={mockStats}
+              stats={{
+                ...stats,
+                circulating_supply: hypotheticalSNR.circulatingSupplyBigInt,
+                total_burned: hypotheticalSNR.totalBurnedBigInt,
+              }}
               currentTier={currentTier}
             />
           </section>
@@ -145,7 +170,11 @@ export default function TokenomicsPage() {
               </span>
             </div>
             <SupplyMetrics
-              stats={mockStats}
+              stats={{
+                ...stats,
+                circulating_supply: hypotheticalSNR.circulatingSupplyBigInt,
+                total_burned: hypotheticalSNR.totalBurnedBigInt,
+              }}
               currentTier={currentTier}
             />
           </section>
@@ -163,42 +192,46 @@ export default function TokenomicsPage() {
                 <TierCard
                   key={tier.level}
                   tier={tier}
-                  stats={mockStats}
+                  stats={{
+                    ...stats,
+                    circulating_supply: hypotheticalSNR.circulatingSupplyBigInt,
+                    total_burned: hypotheticalSNR.totalBurnedBigInt,
+                  }}
                   highlighted={tier.level === currentTier.level}
                 />
               ))}
             </div>
           </section>
 
-          {/* Example Protocol Activity */}
+          {/* Real Protocol Activity */}
           <section>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-mono text-sonar-highlight">Example Protocol Activity</h2>
-              <span className="text-xs px-3 py-1 bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 rounded-sonar font-mono">
-                DEMO DATA
+              <h2 className="text-2xl font-mono text-sonar-highlight">Protocol Activity</h2>
+              <span className="text-xs px-3 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded-sonar font-mono">
+                LIVE DATA
               </span>
             </div>
             <GlassCard>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <div>
                   <p className="text-sm text-sonar-highlight-bright/60 mb-2 font-mono">Total Datasets</p>
-                  <p className="text-3xl font-mono font-bold text-sonar-signal">{mockStats.total_datasets}</p>
+                  <p className="text-3xl font-mono font-bold text-sonar-signal">{stats.total_datasets}</p>
                 </div>
                 <div>
                   <p className="text-sm text-sonar-highlight-bright/60 mb-2 font-mono">Total Purchases</p>
-                  <p className="text-3xl font-mono font-bold text-sonar-highlight">{mockStats.total_purchases}</p>
+                  <p className="text-3xl font-mono font-bold text-sonar-highlight">{stats.total_purchases}</p>
                 </div>
                 <div>
                   <p className="text-sm text-sonar-highlight-bright/60 mb-2 font-mono">Active Creators</p>
-                  <p className="text-3xl font-mono font-bold text-sonar-highlight-bright">{mockStats.active_creators}</p>
+                  <p className="text-3xl font-mono font-bold text-sonar-highlight-bright">{stats.active_creators}</p>
                 </div>
                 <div>
                   <p className="text-sm text-sonar-highlight-bright/60 mb-2 font-mono">Total Volume</p>
-                  <p className="text-3xl font-mono font-bold text-sonar-coral">${Number(mockStats.total_volume).toLocaleString()}</p>
+                  <p className="text-3xl font-mono font-bold text-sonar-coral">${Number(stats.total_volume).toLocaleString()}</p>
                 </div>
               </div>
               <p className="text-xs text-sonar-highlight-bright/50 mt-4 text-center">
-                Example metrics showing how protocol activity would be displayed
+                Real-time protocol statistics from the SONAR marketplace
               </p>
             </GlassCard>
           </section>
@@ -207,3 +240,4 @@ export default function TokenomicsPage() {
     </main>
   );
 }
+

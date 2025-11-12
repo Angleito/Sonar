@@ -330,7 +330,7 @@ railway init
 railway add postgres
 railway up
 
-# See docs/DEPLOYMENT.md for detailed instructions
+# See DEPLOYMENT.md for detailed instructions
 ```
 
 ---

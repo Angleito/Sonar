@@ -8,14 +8,13 @@ import { PublishResult, DatasetMetadata } from '@/lib/types/upload';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { toast } from 'sonner';
+import { getTxExplorerUrl } from '@/lib/sui/client';
 
 interface SuccessStepProps {
   publish: PublishResult;
   metadata: DatasetMetadata;
   onClose: () => void;
 }
-
-const SUI_EXPLORER_URL = 'https://suiscan.xyz/testnet';
 
 /**
  * SuccessStep Component
@@ -29,7 +28,7 @@ export function SuccessStep({
   const [copied, setCopied] = useState(false);
 
   const datasetUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/dataset/${publish.datasetId}`;
-  const txUrl = `${SUI_EXPLORER_URL}/tx/${publish.txDigest}`;
+  const txUrl = getTxExplorerUrl(publish.txDigest);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(datasetUrl);

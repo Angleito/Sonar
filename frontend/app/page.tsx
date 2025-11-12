@@ -45,9 +45,6 @@ export default function HomePage() {
             <Link href="/marketplace">
               <SonarButton variant="primary">Explore Marketplace</SonarButton>
             </Link>
-            <Link href="/tokenomics">
-              <SonarButton variant="secondary">View Tokenomics</SonarButton>
-            </Link>
           </div>
 
           {/* Status Badges */}

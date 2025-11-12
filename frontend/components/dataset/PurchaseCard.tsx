@@ -6,6 +6,7 @@ import { SonarButton } from '@/components/ui/SonarButton';
 import { SignalBadge } from '@/components/ui/SignalBadge';
 import { getTierInfo, calculateBurnAmount, calculateCreatorReward } from '@/lib/tier-utils';
 import { formatSonarAmount } from '@/lib/tier-utils';
+import { getTxExplorerUrl } from '@/lib/sui/client';
 import { usePurchase } from '@/hooks/usePurchase';
 import type { Dataset } from '@/types/blockchain';
 import type { ProtocolStats } from '@/types/blockchain';
@@ -125,7 +126,7 @@ export function PurchaseCard({ dataset, stats }: PurchaseCardProps) {
                 </span>
               </div>
               <a
-                href={`https://suiscan.xyz/testnet/tx/${state.digest}`}
+                href={getTxExplorerUrl(state.digest)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs font-mono text-sonar-signal hover:text-sonar-highlight-bright underline"
