@@ -2,7 +2,7 @@
 # Optimized for monorepo with Prisma and workspace dependencies
 
 # Stage 1: Dependencies
-FROM oven/bun:1.1-slim as deps
+FROM oven/bun:1.2-slim as deps
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ COPY backend/package.json ./backend/
 RUN bun install --frozen-lockfile
 
 # Stage 2: Build
-FROM oven/bun:1.1-slim as builder
+FROM oven/bun:1.2-slim as builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ WORKDIR /app/backend
 RUN bunx prisma generate
 
 # Stage 3: Production Runtime
-FROM oven/bun:1.1-slim
+FROM oven/bun:1.2-slim
 
 WORKDIR /app
 
