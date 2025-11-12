@@ -45,6 +45,12 @@ export default function HomePage() {
             <Link href="/marketplace">
               <SonarButton variant="primary">Explore Marketplace</SonarButton>
             </Link>
+            <Link href="/tokenomics">
+              <SonarButton variant="secondary">Tokenomics</SonarButton>
+            </Link>
+            <Link href="/roadmap">
+              <SonarButton variant="secondary">Roadmap</SonarButton>
+            </Link>
           </div>
 
           {/* Status Badges */}
