@@ -22,15 +22,19 @@ RUN mkdir -p /etc/nix && \
 
 WORKDIR /build
 
+# Install Python 3 for script execution
+RUN nix-env -iA nixpkgs.python3
+
 # Copy Nix files first for better caching
 COPY flake.nix default.nix ./
 
 # Install Nix dependencies (this will be cached)
 RUN nix-shell default.nix --run "echo 'Nix environment ready'"
 
-# Copy source code
+# Copy source code and Python scripts
 COPY seal/ ./seal/
 COPY start.sh build.sh ./
+COPY scripts/build.py ./scripts/
 
 # Build using Cargo with Nix-provided toolchain
 RUN nix-shell default.nix --run "cd seal && \
@@ -38,15 +42,13 @@ RUN nix-shell default.nix --run "cd seal && \
     cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true && \
     cargo build --bin key-server --release --config net.git-fetch-with-cli=true"
 
-# Verify binaries were built
-RUN test -f seal/target/release/key-server && \
-    test -f seal/target/release/seal-cli && \
-    echo "✅ Binaries built successfully"
+# Verify binaries were built using Python script
+RUN python3 scripts/build.py seal/target/release
 
 # Stage 2: Runtime image (minimal)
 FROM debian:bullseye-slim AS runtime
 
-# Install runtime dependencies only
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libpq5 \
@@ -55,22 +57,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     socat \
     && rm -rf /var/lib/apt/lists/*
 
-# Create directories
-RUN mkdir -p /app/config /app/scripts /opt/key-server/bin
-
 # Copy binaries from builder
 COPY --from=builder /build/seal/target/release/key-server /opt/key-server/bin/key-server
 COPY --from=builder /build/seal/target/release/seal-cli /opt/key-server/bin/seal-cli
 
 # Copy config templates and scripts
 COPY key-server-config.yaml.example /app/config/template.yaml
-COPY key-server-config-open.yaml.example /app/config/template-open.yaml 2>/dev/null || true
-COPY scripts/verify-config.sh /app/scripts/verify-config.sh 2>/dev/null || true
+COPY key-server-config-open.yaml.example /app/config/template-open.yaml
 COPY start.sh /app/start.sh
+COPY scripts/verify-config.sh /app/scripts/verify-config.sh
+COPY scripts/setup.py /app/scripts/setup.py
 
-# Set permissions
-RUN chmod +x /app/start.sh /opt/key-server/bin/key-server /opt/key-server/bin/seal-cli && \
-    chmod +x /app/scripts/verify-config.sh 2>/dev/null || true
+# Run Python setup script to handle file copying and permissions
+RUN python3 /app/scripts/setup.py
 
 # Create non-root user for runtime
 RUN useradd --create-home --shell /usr/sbin/nologin --uid 10001 keyserver && \
