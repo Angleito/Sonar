@@ -89,10 +89,13 @@ RUN mkdir -p /etc/nix && \
 # coreutils provides /bin/false and other standard utilities
 # bash is required for start.sh script execution
 # gnused provides sed command used in start.sh
-RUN nix-env -iA nixpkgs.cacert nixpkgs.postgresql.lib nixpkgs.curl nixpkgs.python3 nixpkgs.socat nixpkgs.shadow nixpkgs.coreutils nixpkgs.bash nixpkgs.gnused
+# gnugrep provides grep with Perl regex support (-P flag) for parsing seal-cli output
+RUN nix-env -iA nixpkgs.cacert nixpkgs.postgresql.lib nixpkgs.curl nixpkgs.python3 nixpkgs.socat nixpkgs.shadow nixpkgs.coreutils nixpkgs.bash nixpkgs.gnused nixpkgs.gnugrep
 
-# Create directory for binaries
-RUN mkdir -p /opt/key-server/bin
+# Create directories for binaries and config
+RUN mkdir -p /opt/key-server/bin && \
+    mkdir -p /app/config && \
+    mkdir -p /app/scripts
 
 # Copy binaries from builder (Docker COPY will fail if source doesn't exist)
 COPY --from=builder /build/seal/target/release/key-server /opt/key-server/bin/key-server
@@ -128,6 +131,7 @@ RUN python3 /app/scripts/setup.py
 # Create /bin/false symlink so useradd can find it
 # Also create /bin/bash symlink for start.sh script execution
 # Create /bin/sed symlink for start.sh script execution (line 239)
+# Create /bin/grep symlink for start.sh script execution (lines 115, 176-177)
 RUN mkdir -p /etc /bin && \
     FALSE_PATH=$(which false || echo "") && \
     if [ -n "$FALSE_PATH" ]; then \
@@ -146,6 +150,14 @@ RUN mkdir -p /etc /bin && \
         ln -sf "$SED_PATH" /bin/sed || cp "$SED_PATH" /bin/sed; \
     else \
         echo "❌ Error: sed not found after installation" && exit 1; \
+    fi && \
+    GREP_PATH=$(which grep || echo "") && \
+    if [ -n "$GREP_PATH" ]; then \
+        ln -sf "$GREP_PATH" /bin/grep || cp "$GREP_PATH" /bin/grep; \
+        echo "✅ grep symlink created: $(/bin/grep --version | head -1)" && \
+        /bin/grep --help 2>&1 | grep -q "\-P" && echo "✅ grep supports -P (Perl regex) flag" || echo "⚠️  grep may not support -P flag"; \
+    else \
+        echo "❌ Error: grep not found after installation" && exit 1; \
     fi
 
 # Initialize system files for manual user creation
@@ -158,11 +170,13 @@ RUN touch /etc/passwd /etc/group /etc/shadow /etc/gshadow && \
 
 # Create user manually (useradd has issues in NixOS minimal image)
 # Add user entry to /etc/passwd and /etc/group
+# Ensure /app/config is writable by keyserver user for config generation
 RUN echo "keyserver:x:10001:0:keyserver user:/home/keyserver:/bin/false" >> /etc/passwd && \
     echo "keyserver:x:10001:" >> /etc/group && \
     mkdir -p /home/keyserver && \
     chown -R 10001:0 /home/keyserver /app /opt/key-server && \
-    chmod 755 /app/config
+    chmod 755 /app/config && \
+    chmod 755 /app/scripts
 
 USER keyserver
 ENV HOME=/home/keyserver
