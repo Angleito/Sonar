@@ -86,7 +86,8 @@ RUN mkdir -p /etc/nix && \
 # Install runtime dependencies using nix-env
 # These match the libraries the binaries were built against
 # shadow provides useradd/userdel/etc for user management
-RUN nix-env -iA nixpkgs.cacert nixpkgs.postgresql.lib nixpkgs.curl nixpkgs.python3 nixpkgs.socat nixpkgs.shadow
+# coreutils provides /bin/false and other standard utilities
+RUN nix-env -iA nixpkgs.cacert nixpkgs.postgresql.lib nixpkgs.curl nixpkgs.python3 nixpkgs.socat nixpkgs.shadow nixpkgs.coreutils
 
 # Create directory for binaries
 RUN mkdir -p /opt/key-server/bin
@@ -120,8 +121,14 @@ COPY scripts/setup.py /app/scripts/setup.py
 RUN python3 /app/scripts/setup.py
 
 # Create non-root user for runtime
-# Use /bin/false as shell (more portable than /usr/sbin/nologin in NixOS)
-RUN useradd --create-home --shell /bin/false --uid 10001 keyserver && \
+# Initialize system files needed for useradd (NixOS minimal image doesn't have them)
+RUN mkdir -p /etc && \
+    touch /etc/passwd /etc/group /etc/shadow /etc/gshadow && \
+    chmod 644 /etc/passwd /etc/group && \
+    chmod 600 /etc/shadow /etc/gshadow && \
+    echo "root:x:0:0:root:/root:/bin/sh" >> /etc/passwd && \
+    echo "root:x:0:" >> /etc/group && \
+    useradd --create-home --shell /bin/false --uid 10001 keyserver && \
     chown -R keyserver:root /app /opt/key-server && \
     chmod 755 /app/config
 
