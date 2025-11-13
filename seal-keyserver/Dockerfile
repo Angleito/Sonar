@@ -130,13 +130,18 @@ RUN mkdir -p /etc /bin && \
         ln -sf "$FALSE_PATH" /bin/false || cp "$FALSE_PATH" /bin/false; \
     else \
         echo "#!/bin/sh" > /bin/false && echo "exit 1" >> /bin/false && chmod +x /bin/false; \
-    fi && \
-    touch /etc/passwd /etc/group /etc/shadow /etc/gshadow && \
+    fi
+
+# Initialize system files for useradd
+RUN touch /etc/passwd /etc/group /etc/shadow /etc/gshadow && \
     chmod 644 /etc/passwd /etc/group && \
     chmod 600 /etc/shadow /etc/gshadow && \
     echo "root:x:0:0:root:/root:/bin/sh" >> /etc/passwd && \
     echo "root:x:0:" >> /etc/group && \
-    useradd --create-home --shell /bin/false --uid 10001 keyserver && \
+    test -f /etc/passwd && test -f /etc/group && echo "System files initialized"
+
+# Create user and set permissions
+RUN useradd --create-home --shell /bin/false --uid 10001 keyserver && \
     chown -R keyserver:root /app /opt/key-server && \
     chmod 755 /app/config
 
