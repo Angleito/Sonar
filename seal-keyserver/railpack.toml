@@ -1,4 +1,4 @@
-# Nixpacks configuration for SEAL Key Server
+# Railpack configuration for SEAL Key Server
 # Railway will use this to build the Rust project
 
 [phases.setup]
@@ -10,6 +10,7 @@ commands = [
   "cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true",
   "cargo build --bin key-server --release --config net.git-fetch-with-cli=true"
 ]
+cacheDirectories = ["seal/target"]
 
 [phases.install]
 commands = [

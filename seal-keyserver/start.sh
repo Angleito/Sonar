@@ -29,38 +29,12 @@ if [ -f "${BASE_DIR}/key-server-config.yaml.example" ]; then
   fi
 fi
 
-# Check if Rust binaries need to be built
+# Check if Rust binaries are present (should be built during Railpack build phase)
 if [ ! -f "/opt/key-server/bin/key-server" ] || [ ! -f "/opt/key-server/bin/seal-cli" ]; then
-  echo "⚠️  Rust binaries not found - building from source..."
-  
-  if [ -d "${BASE_DIR}/seal" ]; then
-    echo "   Found SEAL source directory, building..."
-
-    if ! command -v cargo >/dev/null 2>&1; then
-      echo "❌ Error: cargo is not available in the runtime environment"
-      echo "   The Nixpacks build phase must compile the Rust binaries"
-      echo "   Verify that nixpacks.toml build commands executed successfully"
-      exit 1
-    fi
-
-    cd "${BASE_DIR}/seal"
-    
-    # Build the binaries
-    export CARGO_NET_GIT_FETCH_WITH_CLI=true
-    cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true
-    cargo build --bin key-server --release --config net.git-fetch-with-cli=true
-    
-    # Copy to expected location
-    cp target/release/key-server /opt/key-server/bin/
-    cp target/release/seal-cli /opt/key-server/bin/
-    
-    echo "   ✅ Binaries built successfully"
-    cd "${BASE_DIR}"
-  else
-    echo "❌ Error: SEAL source directory not found and binaries don't exist"
-    echo "   Expected: ${BASE_DIR}/seal/"
-    exit 1
-  fi
+  echo "❌ Error: key-server binaries not found in /opt/key-server/bin"
+  echo "   The Railpack build phase must compile the Rust binaries via railpack.toml"
+  echo "   Check the deployment build logs for cargo build output and rerun the build"
+  exit 1
 else
   echo "   ✅ Rust binaries found"
 fi
