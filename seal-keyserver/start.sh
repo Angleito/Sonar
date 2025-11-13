@@ -200,11 +200,34 @@ echo ""
 echo "🚀 Starting key server..."
 echo ""
 
+# Error trap for debugging startup failures
+trap 'echo "❌ Key server startup failed with exit code $?"; exit 1' ERR
+
 export CONFIG_PATH=/app/config/key-server-config.yaml
 export MASTER_KEY="${CLEAN_MASTER_KEY}"
 FORWARDED_PORT="${PORT:-2024}"
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🔧 Configuration:"
+echo "   CONFIG_PATH: ${CONFIG_PATH}"
+echo "   Target Port: 2024 (key-server listens here)"
+echo "   Platform Port: ${FORWARDED_PORT}"
+echo "   Network: Mainnet (connecting to Sui blockchain...)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
 if [ "$FORWARDED_PORT" != "2024" ]; then
   echo "🔁 Detected platform port ${FORWARDED_PORT}, forwarding traffic to 2024"
+  echo "   Starting socat forwarder in background..."
   socat TCP-LISTEN:"${FORWARDED_PORT}",fork,reuseaddr TCP:127.0.0.1:2024 &
+  SOCAT_PID=$!
+  echo "   Socat running with PID ${SOCAT_PID}"
+  echo ""
 fi
+
+echo "🎯 Executing key-server binary..."
+echo "   This may take 30-60s to connect to Sui Mainnet and initialize"
+echo "   Health checks will start after initialization completes"
+echo ""
+
 exec /opt/key-server/bin/key-server

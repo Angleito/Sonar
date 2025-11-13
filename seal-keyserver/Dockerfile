@@ -64,8 +64,10 @@ WORKDIR /app
 EXPOSE 2024 9184
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:2024/health || exit 1
+# Railway: Give the key-server 60s to connect to Sui Mainnet before health checks start
+# Use PORT env var to handle Railway's dynamic port assignment
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:${PORT:-2024}/health || exit 1
 
 # Start key server
 CMD ["/app/start.sh"]
