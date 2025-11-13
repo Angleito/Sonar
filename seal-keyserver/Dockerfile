@@ -12,7 +12,7 @@
 # See SETUP_GUIDE.md for complete instructions
 
 # Stage 1: Nix-based builder
-FROM nixos/nix:2.23 AS builder
+FROM nixos/nix:latest AS builder
 
 # Enable Nix flakes and configure cache
 RUN mkdir -p /etc/nix && \
