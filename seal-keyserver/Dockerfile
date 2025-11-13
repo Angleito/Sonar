@@ -22,8 +22,8 @@ RUN mkdir -p /etc/nix && \
 
 WORKDIR /build
 
-# Install Python 3 for script execution
-RUN nix-env -iA nixpkgs.python3
+# Install Python 3 and git for script execution and repository cloning
+RUN nix-env -iA nixpkgs.python3 nixpkgs.git
 
 # Copy Nix files first for better caching
 COPY flake.nix default.nix ./
@@ -32,12 +32,25 @@ COPY flake.nix default.nix ./
 RUN nix-shell default.nix --run "echo 'Nix environment ready'"
 
 # Copy source code and Python scripts
-COPY seal/ ./seal/
+# Try to copy seal directory, but if it's empty (git submodule not initialized), clone it
+COPY seal ./seal
 COPY start.sh build.sh ./
 COPY scripts/build.py ./scripts/
 
-# Verify seal directory structure
-RUN ls -la seal/ | head -20 && \
+# Verify seal directory and clone if empty (handles git submodule case)
+RUN if [ ! -f seal/Cargo.toml ]; then \
+        echo "⚠️  seal/ directory is empty, cloning from GitHub..." && \
+        rm -rf seal && \
+        git clone https://github.com/MystenLabs/seal.git seal && \
+        cd seal && \
+        git checkout main && \
+        cd ..; \
+    fi && \
+    echo "=== Contents of /build/seal ===" && \
+    ls -la seal/ | head -10 && \
+    echo "" && \
+    echo "=== Checking for Cargo.toml ===" && \
+    find seal -name "Cargo.toml" -type f | head -5 && \
     test -f seal/Cargo.toml && echo "✓ Cargo.toml found" || (echo "✗ Cargo.toml missing" && exit 1)
 
 # Build using Cargo with Nix-provided toolchain
