@@ -61,6 +61,16 @@ RUN nix-shell default.nix --run "cd /build/seal && \
     cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true && \
     cargo build --bin key-server --release --config net.git-fetch-with-cli=true"
 
+# Verify binaries were built and show their locations
+RUN echo "=== Verifying built binaries ===" && \
+    ls -lh /build/seal/target/release/key-server /build/seal/target/release/seal-cli && \
+    test -f /build/seal/target/release/key-server && \
+    test -f /build/seal/target/release/seal-cli && \
+    echo "✅ Both binaries built successfully" || \
+    (echo "❌ Error: Binaries not found after build" && \
+     ls -la /build/seal/target/release/ && \
+     exit 1)
+
 # Verify binaries were built using Python script
 RUN python3 scripts/build.py seal/target/release
 
@@ -76,9 +86,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     socat \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binaries from builder
+# Create directory for binaries
+RUN mkdir -p /opt/key-server/bin
+
+# Copy binaries from builder (verify they exist first)
 COPY --from=builder /build/seal/target/release/key-server /opt/key-server/bin/key-server
 COPY --from=builder /build/seal/target/release/seal-cli /opt/key-server/bin/seal-cli
+
+# Verify binaries were copied successfully
+RUN test -f /opt/key-server/bin/key-server && test -f /opt/key-server/bin/seal-cli && \
+    echo "✅ Binaries copied successfully" || \
+    (echo "❌ Error: Binaries not found after COPY" && \
+     ls -la /opt/key-server/bin/ && \
+     exit 1)
 
 # Copy config templates and scripts
 COPY key-server-config.yaml.example /app/config/template.yaml
