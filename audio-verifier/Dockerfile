@@ -72,23 +72,12 @@ RUN python3.13 -m venv /app/.venv && \
 # Used by verification pipeline for Gemini uploads
 RUN mkdir -p /tmp/audio-verifier && chmod 1777 /tmp/audio-verifier
 
-# Create non-root user for runtime
-# Initialize system files needed for user creation (NixOS minimal image doesn't have them)
-RUN mkdir -p /etc && \
-    touch /etc/passwd /etc/group /etc/shadow /etc/gshadow && \
-    chmod 644 /etc/passwd /etc/group && \
-    chmod 600 /etc/shadow /etc/gshadow && \
-    echo "root:x:0:0:root:/root:/bin/sh" >> /etc/passwd && \
-    echo "root:x:0:" >> /etc/group && \
-    test -f /etc/passwd && test -f /etc/group && echo "System files initialized"
+# Copy user setup script
+COPY setup_user.py /tmp/setup_user.py
 
-# Create user manually (useradd has issues in NixOS minimal image)
-# Add user entry to /etc/passwd and /etc/group
-RUN echo "verifier:x:1000:0:verifier user:/home/verifier:/bin/false" >> /etc/passwd && \
-    echo "verifier:x:1000:" >> /etc/group && \
-    mkdir -p /home/verifier && \
-    chown -R 1000:0 /home/verifier /app /tmp/audio-verifier && \
-    chmod 755 /app
+# Create non-root user for runtime using Python script
+# This handles user creation reliably in NixOS environment
+RUN python3.13 /tmp/setup_user.py
 
 USER verifier
 ENV HOME=/home/verifier
