@@ -104,6 +104,7 @@ RUN LIBSTDCPP_FILE="" && \
     echo "Found libstdc++ at: $GCC_LIB_DIR" && \
     echo "$GCC_LIB_DIR" > /tmp/gcc_lib_dir.txt && \
     chmod 644 /tmp/gcc_lib_dir.txt && \
+    mkdir -p /etc/profile.d && \
     echo "export LD_LIBRARY_PATH=\"$GCC_LIB_DIR:\${LD_LIBRARY_PATH:-}\"" >> /etc/profile.d/nix-libs.sh && \
     chmod +x /etc/profile.d/nix-libs.sh
 
