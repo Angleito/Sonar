@@ -72,12 +72,14 @@ RUN python3.13 -m venv /app/.venv && \
 # Used by verification pipeline for Gemini uploads
 RUN mkdir -p /tmp/audio-verifier && chmod 1777 /tmp/audio-verifier
 
-# Copy user setup script
+# Copy user setup script and start script
 COPY setup_user.py /tmp/setup_user.py
+COPY start.sh /app/start.sh
 
 # Create non-root user for runtime using Python script
 # This handles user creation reliably in NixOS environment
-RUN python3.13 /tmp/setup_user.py
+RUN python3.13 /tmp/setup_user.py && \
+    chmod +x /app/start.sh
 
 USER verifier
 ENV HOME=/home/verifier
@@ -86,9 +88,9 @@ WORKDIR /app
 # Expose port
 EXPOSE 8000
 
-# Health check (using venv Python)
+# Health check (using venv Python, respects PORT env var)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD /app/.venv/bin/python -c "import httpx; httpx.get('http://localhost:8000/health', timeout=5.0)"
+  CMD /app/.venv/bin/python -c "import os, httpx; port=os.environ.get('PORT', '8000'); httpx.get(f'http://localhost:{port}/health', timeout=5.0)"
 
-# Start server with 2 workers for production (using venv Python)
-CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Start server using start.sh script (handles PORT env var for Railway/cloud platforms)
+CMD ["/app/start.sh"]
