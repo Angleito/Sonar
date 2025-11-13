@@ -1,0 +1,21 @@
+# Bazel configuration for sonar-audio-verifier
+
+# Use the default build platform
+build --platforms=@platforms//host
+
+# Build with release optimizations
+build --compilation_mode=opt
+
+# Python-specific settings
+build --python_version=3.14
+build --python_path=python3.14
+
+# Keep going on errors for better error reporting
+build --keep_going
+
+# Show more detailed output
+build --verbose_failures
+
+# Enable remote caching (optional, for CI/CD)
+# build --remote_cache=...
+
