@@ -2,29 +2,34 @@
 set -e
 
 # Build script for sonar-audio-verifier
-# Supports multiple build methods: UV (default), Nix, or Bazel
+# Supports multiple build methods: pip (default), Nix, or Bazel
 
-BUILD_METHOD="${BUILD_METHOD:-uv}"
+BUILD_METHOD="${BUILD_METHOD:-pip}"
 
 echo "🔨 Building Python application using ${BUILD_METHOD}..."
 
 case "$BUILD_METHOD" in
-  uv)
-    echo "Using UV build..."
-    if command -v uv >/dev/null 2>&1; then
-      uv pip install --system .
+  pip)
+    echo "Using pip build..."
+    if command -v python3.14 >/dev/null 2>&1; then
+      python3.14 -m venv .venv || true
+      . .venv/bin/activate 2>/dev/null || true
+      pip install --upgrade pip
+      pip install .
     else
-      echo "❌ Error: uv not found. Install UV from https://github.com/astral-sh/uv"
+      echo "❌ Error: python3.14 not found"
       exit 1
     fi
     ;;
     
   nix)
     echo "Using Nix build..."
-    if command -v nix-shell >/dev/null 2>&1; then
-      nix-shell default.nix --run "uv pip install --system ."
+    if command -v nix-build >/dev/null 2>&1; then
+      nix-build -A packages.default
+    elif command -v nix-shell >/dev/null 2>&1; then
+      nix-shell default.nix --run "pip install ."
     else
-      echo "❌ Error: nix-shell not found. Install Nix from https://nixos.org/download.html"
+      echo "❌ Error: nix-build or nix-shell not found. Install Nix from https://nixos.org/download.html"
       exit 1
     fi
     ;;
@@ -41,7 +46,7 @@ case "$BUILD_METHOD" in
     
   *)
     echo "❌ Error: Unknown build method: $BUILD_METHOD"
-    echo "Supported methods: uv, nix, bazel"
+    echo "Supported methods: pip, nix, bazel"
     exit 1
     ;;
 esac

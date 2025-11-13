@@ -19,18 +19,19 @@ RUN mkdir -p /etc/nix && \
 
 WORKDIR /build
 
-# Install Python 3.14, UV, build tools, and system dependencies via nix-env
-RUN nix-env -iA nixpkgs.python314 nixpkgs.uv nixpkgs.gcc nixpkgs.rustc nixpkgs.cargo nixpkgs.pkg-config nixpkgs.git nixpkgs.openssl nixpkgs.zlib
+# Install Python 3.14 (includes pip), build tools, and system dependencies via nix-env
+RUN nix-env -iA nixpkgs.python314 nixpkgs.gcc nixpkgs.rustc nixpkgs.cargo nixpkgs.pkg-config nixpkgs.git nixpkgs.openssl nixpkgs.zlib
 
 # Copy project files
 COPY pyproject.toml .
 COPY *.py .
 
-# Create virtual environment and install Python dependencies using UV
+# Create virtual environment and install Python dependencies using pip
 # Nix-managed Python is immutable, so we must use a venv
-RUN uv venv /build/.venv && \
+RUN python3.14 -m venv /build/.venv && \
     . /build/.venv/bin/activate && \
-    uv pip install .
+    pip install --upgrade pip && \
+    pip install .
 
 # Verify installation
 RUN . /build/.venv/bin/activate && \
@@ -49,8 +50,9 @@ RUN mkdir -p /etc/nix && \
     echo "sandbox = false" >> /etc/nix/nix.conf
 
 # Install runtime dependencies using nix-env
-# Python 3.14, UV, build tools (needed for pysui-fastcrypto), and system libraries for audio processing
-RUN nix-env -iA nixpkgs.python314 nixpkgs.uv nixpkgs.gcc nixpkgs.rustc nixpkgs.cargo nixpkgs.pkg-config nixpkgs.ffmpeg nixpkgs.chromaprint nixpkgs.libsndfile nixpkgs.curl nixpkgs.shadow nixpkgs.coreutils nixpkgs.openssl nixpkgs.zlib
+# Python 3.14 with pip, build tools (needed for pysui-fastcrypto), and system libraries for audio processing
+# Note: pip comes with python314, so we don't need to install it separately
+RUN nix-env -iA nixpkgs.python314 nixpkgs.gcc nixpkgs.rustc nixpkgs.cargo nixpkgs.pkg-config nixpkgs.ffmpeg nixpkgs.chromaprint nixpkgs.libsndfile nixpkgs.curl nixpkgs.shadow nixpkgs.coreutils nixpkgs.openssl nixpkgs.zlib
 
 # Create directory for application
 WORKDIR /app
@@ -61,9 +63,10 @@ COPY *.py .
 
 # Create virtual environment and install Python dependencies in runtime stage
 # Nix-managed Python is immutable, so we must use a venv
-RUN uv venv /app/.venv && \
+RUN python3.14 -m venv /app/.venv && \
     . /app/.venv/bin/activate && \
-    uv pip install .
+    pip install --upgrade pip && \
+    pip install .
 
 # Create temp directory for audio processing with proper permissions
 # Used by verification pipeline for Gemini uploads

@@ -1,5 +1,5 @@
 # Fallback default.nix for non-flake Nix usage
-# Provides Python 3.14, UV, and all build dependencies
+# Provides Python 3.14 with pip and all build dependencies
 
 let
   pkgs = import <nixpkgs> {};
@@ -7,11 +7,11 @@ in
 
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    # Python 3.14
-    python314
-    
-    # UV package manager
-    uv
+    # Python 3.14 with pip
+    (python314.withPackages (ps: with ps; [
+      pip
+      # Add packages available in nixpkgs here
+    ]))
     
     # Build tools for compiling Python packages (especially pysui-fastcrypto)
     gcc

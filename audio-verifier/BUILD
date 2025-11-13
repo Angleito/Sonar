@@ -1,7 +1,7 @@
 # Bazel BUILD file for sonar-audio-verifier
-# This uses genrule to install Python packages using UV, leveraging Bazel's caching
+# This uses genrule to install Python packages using pip, leveraging Bazel's caching
 
-# Install Python dependencies using UV
+# Install Python dependencies using pip
 genrule(
     name = "dependencies",
     srcs = glob([
@@ -10,11 +10,14 @@ genrule(
     ]),
     outs = ["deps-installed"],
     cmd = """
-        uv pip install --system . && \
+        python3.14 -m venv .venv && \
+        . .venv/bin/activate && \
+        pip install --upgrade pip && \
+        pip install . && \
         touch $$(location deps-installed)
     """,
-    message = "Installing Python dependencies with UV",
-    local = 1,  # Run locally to preserve UV's caching
+    message = "Installing Python dependencies with pip",
+    local = 1,  # Run locally to preserve pip's caching
 )
 
 # Build the application package
@@ -27,7 +30,10 @@ genrule(
     outs = ["app-installed"],
     tools = [":dependencies"],
     cmd = """
-        uv pip install --system . && \
+        python3.14 -m venv .venv && \
+        . .venv/bin/activate && \
+        pip install --upgrade pip && \
+        pip install . && \
         touch $$(location app-installed)
     """,
     message = "Building application package",

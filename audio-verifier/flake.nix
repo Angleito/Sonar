@@ -20,11 +20,16 @@
       {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            # Python 3.14
-            python314
-            
-            # UV package manager
-            uv
+            # Python 3.14 with packages (pip is included by default)
+            (python314.withPackages (ps: with ps; [
+              # Core packages available in nixpkgs
+              fastapi
+              uvicorn
+              httpx
+              numpy
+              # Note: Some packages like pysui-fastcrypto may not be in nixpkgs
+              # and will need to be installed via pip (which is included)
+            ]))
             
             # Build tools for compiling Python packages (especially pysui-fastcrypto)
             gcc
@@ -59,25 +64,33 @@
           shellHook = ''
             echo "🔧 SONAR Audio Verifier development environment"
             echo "Python version: $(python3.14 --version)"
-            echo "UV version: $(uv --version)"
             echo "Bazel version: $(bazel --version)"
             echo ""
             echo "Available commands:"
-            echo "  uv pip install ."
+            echo "  pip install ."
             echo "  bazel build //:app"
             echo "  BUILD_METHOD=bazel ./build.sh"
-            echo "  BUILD_METHOD=uv ./build.sh"
+            echo "  BUILD_METHOD=pip ./build.sh"
+            echo "  BUILD_METHOD=nix ./build.sh"
           '';
         };
 
-        # Build outputs
-        packages.default = pkgs.stdenv.mkDerivation {
-          name = "sonar-audio-verifier";
+        # Build outputs using buildPythonApplication
+        packages.default = python314.pkgs.buildPythonApplication {
+          pname = "sonar-audio-verifier";
+          version = "2.0.0";
           src = ./.;
           
+          propagatedBuildInputs = with python314.pkgs; [
+            fastapi
+            uvicorn
+            httpx
+            numpy
+            # Note: Some packages may need to be installed via pip
+            # if they're not in nixpkgs
+          ];
+          
           buildInputs = with pkgs; [
-            python314
-            uv
             gcc
             rustc
             cargo
@@ -90,13 +103,11 @@
             git
           ];
           
-          buildPhase = ''
-            uv pip install --system .
-          '';
-          
-          installPhase = ''
-            mkdir -p $out
-            cp -r . $out/
+          # For packages not in nixpkgs, we'll need to use pip
+          # This is a simplified version - may need custom handling
+          postInstall = ''
+            # Install remaining packages via pip if needed
+            pip install --prefix=$out pysui google-generativeai librosa soundfile pyacoustid pydub cryptography || true
           '';
         };
       }
