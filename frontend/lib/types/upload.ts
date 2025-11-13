@@ -31,6 +31,7 @@ export interface DatasetMetadata {
 export interface EncryptionResult {
   encryptedBlob: Blob;
   seal_policy_id: string; // Seal identity (hex string) for decryption
+  encryptedObjectBcsHex?: string; // BCS-serialized encrypted object (hex) for verifier
   previewBlob?: Blob;
   mimeType?: string;
   previewMimeType?: string;
@@ -53,6 +54,7 @@ export interface FileUploadResult {
   blobId: string;
   previewBlobId?: string;
   seal_policy_id: string;
+  encryptedObjectBcsHex?: string; // BCS-serialized encrypted object (hex) for verifier
   duration: number;
   mimeType?: string;
   previewMimeType?: string;
@@ -63,6 +65,7 @@ export interface WalrusUploadResult {
   blobId: string;
   previewBlobId?: string;
   seal_policy_id: string; // Seal identity for decryption
+  encryptedObjectBcsHex?: string; // BCS-serialized encrypted object (hex) for verifier
   // Multi-file dataset support
   files?: FileUploadResult[]; // For multi-file datasets
   bundleDiscountBps?: number; // Basis points (e.g., 2000 = 20%)

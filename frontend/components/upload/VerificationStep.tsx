@@ -9,15 +9,21 @@ import {
   VerificationResult,
   VerificationStage,
   AudioFile,
+  WalrusUploadResult,
 } from '@/lib/types/upload';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { RadarScanTarget } from '@/components/animations/RadarScanTarget';
 
 interface VerificationStepProps {
-  audioFile: AudioFile;
-  audioFiles: AudioFile[];
+  audioFile?: AudioFile; // Optional - for backwards compatibility
+  audioFiles?: AudioFile[]; // Optional - for backwards compatibility
   metadata: DatasetMetadata;
+  // New: encrypted blob info from encryption step
+  walrusBlobId?: string;
+  sealIdentity?: string;
+  encryptedObjectBcsHex?: string;
+  walrusUpload?: WalrusUploadResult; // Alternative: pass full upload result
   onVerificationComplete: (result: VerificationResult) => void;
   onError: (error: string) => void;
 }
@@ -36,6 +42,10 @@ export function VerificationStep({
   audioFile,
   audioFiles,
   metadata,
+  walrusBlobId,
+  sealIdentity,
+  encryptedObjectBcsHex,
+  walrusUpload,
   onVerificationComplete,
   onError,
 }: VerificationStepProps) {
@@ -78,13 +88,35 @@ export function VerificationStep({
     setErrorMessage(null);
     setErrorDetails(null);
 
-    // Use audioFiles if available (multi-file), otherwise fall back to single audioFile
-    const filesToVerify = audioFiles.length > 0 ? audioFiles : [audioFile];
-    setTotalFiles(filesToVerify.length);
-    setCurrentFileIndex(0);
+    // Determine if we're using encrypted blob flow or legacy file flow
+    const useEncryptedFlow = !!(walrusUpload || (walrusBlobId && sealIdentity && encryptedObjectBcsHex));
 
-    // Verify files sequentially
-    await verifyNextFile(filesToVerify, 0);
+    if (useEncryptedFlow) {
+      // New encrypted blob flow
+      const blobId = walrusUpload?.blobId || walrusBlobId!;
+      const identity = walrusUpload?.seal_policy_id || sealIdentity!;
+      const encryptedObjectHex = walrusUpload?.encryptedObjectBcsHex || encryptedObjectBcsHex!;
+
+      setTotalFiles(1);
+      setCurrentFileIndex(0);
+
+      await verifyEncryptedBlob(blobId, identity, encryptedObjectHex);
+    } else {
+      // Legacy file upload flow (for backwards compatibility)
+      if (!audioFile && (!audioFiles || audioFiles.length === 0)) {
+        setErrorMessage('No audio file or encrypted blob provided');
+        setVerificationState('failed');
+        onError('No audio file or encrypted blob provided');
+        return;
+      }
+
+      const filesToVerify = audioFiles && audioFiles.length > 0 ? audioFiles : [audioFile!];
+      setTotalFiles(filesToVerify.length);
+      setCurrentFileIndex(0);
+
+      // Verify files sequentially
+      await verifyNextFile(filesToVerify, 0);
+    }
   };
 
   const verifyNextFile = async (files: AudioFile[], fileIndex: number) => {
@@ -152,6 +184,133 @@ export function VerificationStep({
       setVerificationState('failed');
       onError(error.message || 'Verification failed to start');
     }
+  };
+
+  const verifyEncryptedBlob = async (
+    walrusBlobId: string,
+    sealIdentity: string,
+    encryptedObjectBcsHex: string
+  ) => {
+    try {
+      // Prepare JSON payload with encrypted blob info
+      const payload = {
+        walrusBlobId,
+        sealIdentity,
+        encryptedObjectBcsHex,
+        metadata,
+      };
+
+      // Call server-side API (proxies to audio-verifier with secure token)
+      const response = await fetch('/api/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const { sessionObjectId: id } = data;
+
+      setVerificationId(id);
+
+      // Start polling for verification status
+      startPollingEncrypted(id);
+
+    } catch (error: any) {
+      console.error('Failed to start encrypted verification:', error);
+      setErrorMessage(error.message || 'Failed to start verification');
+      setVerificationState('failed');
+      onError(error.message || 'Verification failed to start');
+    }
+  };
+
+  const startPollingEncrypted = (sessionObjectId: string) => {
+    // Poll every 2 seconds
+    const interval = setInterval(async () => {
+      try {
+        // Call server-side API (proxies to audio-verifier with secure token)
+        const response = await fetch(`/api/verify/${sessionObjectId}`);
+
+        if (!response.ok) {
+          throw new Error(`Failed to poll verification: ${response.status}`);
+        }
+
+        const session = await response.json();
+
+        // Parse response based on new API contract
+        const currentStage = session.currentStage || session.stage || 'quality';
+        const progress = session.progress || 0;
+        const approved = session.approved ?? false;
+        const qualityScore = session.qualityScore ?? 0;
+        const safetyPassed = session.safetyPassed ?? false;
+        const analysis = session.analysis || {};
+        const errors = session.errors || [];
+
+        // Update stages based on current stage
+        updateStagesFromSession({
+          stage: currentStage,
+          progress,
+        });
+
+        // Check if completed or failed
+        if (session.state === 'completed' || session.approved !== undefined) {
+          clearInterval(interval);
+          pollingIntervalRef.current = null;
+
+          // Check if approved
+          if (!approved) {
+            // Verification failed validation
+            setVerificationState('failed');
+            setErrorMessage(errors[0] || 'Verification failed quality, copyright, or safety checks');
+            setErrorDetails({ ...session, errors });
+            onError(errors[0] || 'Verification checks failed');
+            return;
+          }
+
+          // Verification passed
+          const finalResult: VerificationResult = {
+            id: sessionObjectId,
+            state: 'completed',
+            currentStage: 'completed',
+            stages: [
+              { name: 'quality', status: 'completed', progress: 100 },
+              { name: 'copyright', status: 'completed', progress: 100 },
+              { name: 'transcription', status: 'completed', progress: 100 },
+              { name: 'analysis', status: 'completed', progress: 100 },
+            ],
+            qualityScore: qualityScore / 100, // Convert 0-100 to 0-1
+            safetyPassed,
+            insights: analysis.insights || [],
+            updatedAt: Date.now(),
+          };
+
+          setResult(finalResult);
+          setVerificationState('completed');
+          onVerificationComplete(finalResult);
+
+        } else if (session.state === 'failed') {
+          clearInterval(interval);
+          pollingIntervalRef.current = null;
+
+          setVerificationState('failed');
+          setErrorMessage(errors[0] || 'Verification failed');
+          setErrorDetails({ ...session, errors });
+          onError(errors[0] || 'Verification failed');
+        }
+
+      } catch (error: any) {
+        console.error('Polling error:', error);
+        // Don't fail immediately on polling errors, keep trying
+      }
+    }, 2000);
+
+    pollingIntervalRef.current = interval;
   };
 
   const startPolling = (id: string, files: AudioFile[], fileIndex: number) => {

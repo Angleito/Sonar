@@ -10,6 +10,7 @@ import { useSealEncryption } from '@/hooks/useSeal';
 import { useWalrusParallelUpload } from '@/hooks/useWalrusParallelUpload';
 import { useSubWalletOrchestrator } from '@/hooks/useSubWalletOrchestrator';
 import { CHAIN_CONFIG } from '@/lib/sui/client';
+import { bytesToHex } from '@sonar/seal';
 
 /**
  * Generate preview blob from audio file
@@ -145,6 +146,22 @@ export function EncryptionStep({
 
         addLog(`[File ${index + 1}/${totalFiles}] Encryption complete - Policy ID: ${encryptionResult.identity.slice(0, 20)}...`);
 
+        // Extract encrypted object BCS hex for verifier
+        // For envelope encryption, extract sealed key from envelope
+        // For direct encryption, use encryptedData directly
+        let encryptedObjectBcsHex: string;
+        if (encryptionResult.metadata.isEnvelope) {
+          // Envelope format: [4 bytes key length][sealed key][encrypted file]
+          // Extract sealed key (BCS-serialized encrypted object)
+          const keyLengthView = new DataView(encryptionResult.encryptedData.buffer, 0, 4);
+          const sealedKeyLength = keyLengthView.getUint32(0, true); // little-endian
+          const sealedKey = encryptionResult.encryptedData.slice(4, 4 + sealedKeyLength);
+          encryptedObjectBcsHex = bytesToHex(sealedKey);
+        } else {
+          // Direct encryption: encryptedData is the BCS-serialized encrypted object
+          encryptedObjectBcsHex = bytesToHex(encryptionResult.encryptedData);
+        }
+
         // Generate preview
         setStage('generating-preview');
         const previewBlob = await generatePreviewBlob(file);
@@ -185,6 +202,7 @@ export function EncryptionStep({
           blobId: walrusResult.blobId,
           previewBlobId: walrusResult.previewBlobId,
           seal_policy_id: encryptionResult.identity,
+          encryptedObjectBcsHex, // BCS-serialized encrypted object for verifier
           duration: file.duration,
           metadata: metadataWithMime,
           encryptedData: encryptionResult.encryptedData,
@@ -217,6 +235,7 @@ export function EncryptionStep({
       const finalResult = {
         encryptedBlob: new Blob([new Uint8Array(result.encryptedData)]),
         seal_policy_id: result.seal_policy_id,
+        encryptedObjectBcsHex: result.encryptedObjectBcsHex, // Include for verifier
         metadata: result.metadata,
         previewBlob: await generatePreviewBlob(filesToProcess[0]),
         walrusBlobId: result.blobId,

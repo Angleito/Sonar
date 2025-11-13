@@ -22,8 +22,8 @@ interface UploadWizardProps {
 const STEPS: UploadStep[] = [
   'file-upload',
   'metadata',
-  'verification', // Moved before encryption - verify raw audio first!
-  'encryption',
+  'encryption', // Encrypt first, then verify encrypted blob
+  'verification',
   'publish',
   'success',
 ];
@@ -31,8 +31,8 @@ const STEPS: UploadStep[] = [
 const STEP_TITLES: Record<UploadStep, string> = {
   'file-upload': 'Upload Audio',
   'metadata': 'Dataset Details',
-  'verification': 'AI Verification', // Now runs before encryption
   'encryption': 'Encrypting',
+  'verification': 'AI Verification', // Verifies encrypted audio
   'publish': 'Publish to Blockchain',
   'success': 'Success!',
 };
@@ -247,9 +247,8 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
 
               {state.step === 'verification' && (
                 <VerificationStep
-                  audioFile={state.audioFile!}
-                  audioFiles={state.audioFiles}
                   metadata={state.metadata!}
+                  walrusUpload={state.walrusUpload!}
                   onVerificationComplete={(verification) => {
                     setState((prev) => ({ ...prev, verification }));
                     goToNextStep();
@@ -268,6 +267,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
                       blobId: result.walrusBlobId,
                       previewBlobId: result.previewBlobId,
                       seal_policy_id: result.seal_policy_id,
+                      encryptedObjectBcsHex: result.encryptedObjectBcsHex, // Include for verifier
                       // backupKey: result.backupKey, // TODO: Add to WalrusUploadResult type when backup key encryption is implemented
                       files: result.files, // Multi-file results
                       bundleDiscountBps: result.bundleDiscountBps,

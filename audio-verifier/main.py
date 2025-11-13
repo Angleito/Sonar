@@ -3,21 +3,24 @@ SONAR Audio Verifier Service
 FastAPI server for comprehensive audio verification including quality, copyright, transcription, and AI analysis
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Request, Depends, BackgroundTasks, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header, Request, Depends, BackgroundTasks, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 import httpx
 import os
 import uuid
 import json
 import logging
 import tempfile
-from typing import Dict, Any, Optional
+import asyncio
+from typing import Dict, Any, Optional, List
 
 from audio_checker import AudioQualityChecker
 from fingerprint import CopyrightDetector
 from sui_client import SuiVerificationClient
 from verification_pipeline import VerificationPipeline
+from seal_decryptor import decrypt_encrypted_blob
 
 # Configure logging
 logging.basicConfig(
@@ -52,9 +55,24 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # AcoustID API configuration
 ACOUSTID_API_KEY = os.getenv("ACOUSTID_API_KEY")
 
-# Walrus plaintext upload configuration
-WALRUS_UPLOAD_URL = os.getenv("WALRUS_UPLOAD_URL")
+# Walrus configuration
+WALRUS_UPLOAD_URL = os.getenv("WALRUS_UPLOAD_URL")  # Legacy: plaintext upload
 WALRUS_UPLOAD_TOKEN = os.getenv("WALRUS_UPLOAD_TOKEN")
+WALRUS_AGGREGATOR_URL = os.getenv("WALRUS_AGGREGATOR_URL")  # New: for fetching encrypted blobs
+WALRUS_AGGREGATOR_TOKEN = os.getenv("WALRUS_AGGREGATOR_TOKEN")  # Optional bearer token
+
+# Seal decryption configuration
+SEAL_PACKAGE_ID = os.getenv("SEAL_PACKAGE_ID")
+SEAL_THRESHOLD = int(os.getenv("SEAL_THRESHOLD", "2"))
+SEAL_SECRET_KEYS = os.getenv("SEAL_SECRET_KEYS", "").split(",") if os.getenv("SEAL_SECRET_KEYS") else []
+SEAL_KEY_SERVER_IDS = os.getenv("SEAL_KEY_SERVER_IDS", "").split(",") if os.getenv("SEAL_KEY_SERVER_IDS") else []
+
+# Filter out empty strings from lists
+SEAL_SECRET_KEYS = [k.strip() for k in SEAL_SECRET_KEYS if k.strip()]
+SEAL_KEY_SERVER_IDS = [k.strip() for k in SEAL_KEY_SERVER_IDS if k.strip()]
+
+# Feature flag for legacy upload support
+ENABLE_LEGACY_UPLOAD = os.getenv("ENABLE_LEGACY_UPLOAD", "false").lower() == "true"
 
 if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY must be set for audio transcription and analysis")
@@ -71,8 +89,20 @@ if not all([SUI_VALIDATOR_KEY, SUI_PACKAGE_ID, SUI_SESSION_REGISTRY_ID, SUI_VALI
         "SUI_PACKAGE_ID, SUI_SESSION_REGISTRY_ID, and SUI_VALIDATOR_CAP_ID"
     )
 
-if not WALRUS_UPLOAD_URL:
-    raise RuntimeError("WALRUS_UPLOAD_URL must be set for plaintext storage")
+# Validate Seal configuration (required for encrypted blob flow)
+if not SEAL_PACKAGE_ID:
+    logger.warning("SEAL_PACKAGE_ID not set - encrypted blob verification will be disabled")
+if len(SEAL_SECRET_KEYS) < SEAL_THRESHOLD:
+    logger.warning(
+        f"SEAL_SECRET_KEYS has {len(SEAL_SECRET_KEYS)} keys but threshold is {SEAL_THRESHOLD} - "
+        "encrypted blob verification may fail"
+    )
+if not WALRUS_AGGREGATOR_URL:
+    logger.warning("WALRUS_AGGREGATOR_URL not set - encrypted blob verification will be disabled")
+
+# Legacy plaintext upload (deprecated but kept for backwards compatibility)
+if not WALRUS_UPLOAD_URL and not ENABLE_LEGACY_UPLOAD:
+    logger.warning("WALRUS_UPLOAD_URL not set - legacy plaintext upload disabled")
 # CORS middleware - explicit origins only
 app.add_middleware(
     CORSMiddleware,
@@ -201,6 +231,15 @@ async def limit_upload_size(request: Request, call_next):
     return await call_next(request)
 
 
+# Pydantic models for API requests
+class EncryptedVerificationRequest(BaseModel):
+    """Request model for encrypted blob verification."""
+    walrusBlobId: str = Field(..., description="Walrus blob ID of encrypted audio")
+    sealIdentity: str = Field(..., description="Seal identity (hex string) used for encryption")
+    encryptedObjectBcsHex: str = Field(..., description="BCS-serialized encrypted object (hex)")
+    metadata: Dict[str, Any] = Field(..., description="Dataset metadata")
+
+
 # Auth dependency for /verify endpoints
 async def verify_bearer_token(authorization: str = Header(None)):
     """
@@ -237,7 +276,11 @@ async def health():
         "sui_configured": True,
         "gemini_configured": bool(GEMINI_API_KEY),
         "acoustid_configured": bool(ACOUSTID_API_KEY),
-        "walrus_configured": bool(WALRUS_UPLOAD_URL),
+        "walrus_upload_configured": bool(WALRUS_UPLOAD_URL),  # Legacy
+        "walrus_aggregator_configured": bool(WALRUS_AGGREGATOR_URL),  # New
+        "seal_configured": bool(SEAL_PACKAGE_ID and len(SEAL_SECRET_KEYS) >= SEAL_THRESHOLD),
+        "seal_secret_keys_count": len(SEAL_SECRET_KEYS),
+        "seal_threshold": SEAL_THRESHOLD,
         "auth_enabled": bool(VERIFIER_AUTH_TOKEN)
     }
     return {
@@ -249,16 +292,22 @@ async def health():
 # New verification endpoints (integrated pipeline)
 @app.post("/verify", dependencies=[Depends(verify_bearer_token)])
 async def create_verification(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    metadata: str = Form(...)
+    request: Request,
+    background_tasks: BackgroundTasks
 ):
     """
     Start comprehensive audio verification.
 
-    Accepts:
-    - file: Raw audio file (before encryption)
-    - metadata: JSON string with dataset metadata
+    Accepts two request formats:
+    1. JSON (encrypted blob flow):
+       - walrusBlobId: Walrus blob ID
+       - sealIdentity: Seal identity (hex)
+       - encryptedObjectBcsHex: BCS-serialized encrypted object (hex)
+       - metadata: Dataset metadata dict
+
+    2. FormData (legacy flow, requires ENABLE_LEGACY_UPLOAD=true):
+       - file: Raw audio file
+       - metadata: JSON string with dataset metadata
 
     Returns:
     - sessionObjectId: On-chain verification session ID for polling
@@ -268,103 +317,234 @@ async def create_verification(
     session_object_id: Optional[str] = None
 
     try:
-        # Parse metadata
-        try:
-            metadata_dict = json.loads(metadata)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid metadata JSON")
+        # Determine request type based on content type
+        content_type = request.headers.get("content-type", "")
+        is_json_request = content_type.startswith("application/json")
 
-        # Generate verification ID
-        verification_id = str(uuid.uuid4())
-
-        # Stream upload to temp file to avoid loading entire file into RAM
-        # Critical for large files (up to 13GB)
-        temp_dir = "/tmp/audio-verifier" if os.path.exists("/tmp/audio-verifier") else tempfile.gettempdir()
-        temp_fd, temp_file_path = tempfile.mkstemp(
-            suffix=os.path.splitext(file.filename or ".tmp")[1],
-            prefix=f"verify_{verification_id}_",
-            dir=temp_dir
-        )
-
-        file_size = 0
-        try:
-            # Stream file to disk in chunks
-            with os.fdopen(temp_fd, 'wb') as temp_file:
-                chunk_size = 1024 * 1024  # 1MB chunks
-                while chunk := await file.read(chunk_size):
-                    temp_file.write(chunk)
-                    file_size += len(chunk)
-        except Exception as e:
-            # Clean up temp file on upload error
+        if is_json_request:
+            # New encrypted blob flow - parse JSON body
             try:
-                os.unlink(temp_file_path)
-            except:
-                pass
-            raise HTTPException(status_code=400, detail=f"Failed to upload file: {str(e)}")
+                body_data = await request.json()
+                encrypted_request = EncryptedVerificationRequest(**body_data)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON request: {str(e)}")
 
-        if file_size == 0:
-            os.unlink(temp_file_path)
-            raise HTTPException(status_code=400, detail="Empty file uploaded")
+            if not WALRUS_AGGREGATOR_URL:
+                raise HTTPException(
+                    status_code=503,
+                    detail="WALRUS_AGGREGATOR_URL not configured - encrypted blob verification disabled"
+                )
+            if not SEAL_PACKAGE_ID or len(SEAL_SECRET_KEYS) < SEAL_THRESHOLD:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Seal decryption not configured - missing SEAL_PACKAGE_ID or insufficient SEAL_SECRET_KEYS"
+                )
 
-        logger.info(f"Creating verification {verification_id} for file: {file.filename} ({file_size} bytes)")
+            verification_id = str(uuid.uuid4())
+            metadata_dict = encrypted_request.metadata
 
-        # Get audio duration from file
-        try:
-            import soundfile as sf
-            with sf.SoundFile(temp_file_path) as sf_file:
-                frames = len(sf_file)
-                duration_seconds = frames / float(sf_file.samplerate) if sf_file.samplerate else 0.0
-            logger.info(f"Audio duration: {duration_seconds:.2f}s")
-        except Exception as e:
-            logger.warning(f"Failed to extract audio duration: {e}")
-            duration_seconds = 0
-
-        # Upload plaintext audio to Walrus before verification
-        plaintext_cid = await upload_plaintext_to_walrus(
-            temp_file_path,
-            {
-                "filename": file.filename,
-                "contentType": file.content_type,
-                "metadata": metadata_dict.get("metadata"),
-            }
-        )
-
-        # Create on-chain verification session
-        sui_client = get_sui_client()
-        session_object_id = await sui_client.create_session(verification_id, {
-            "plaintext_cid": plaintext_cid,
-            "plaintext_size_bytes": file_size,
-            "duration_seconds": int(duration_seconds),
-            "file_format": file.content_type or "audio/wav"
-        })
-
-        if not session_object_id:
-            os.unlink(temp_file_path)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to create on-chain verification session"
+            logger.info(
+                f"Creating encrypted verification {verification_id} for blob {encrypted_request.walrusBlobId[:16]}..."
             )
 
-        logger.info(f"Created on-chain session: {session_object_id}")
+            # Decrypt encrypted blob to temp file
+            try:
+                # Convert hex to bytes for decryptor
+                encrypted_object_bytes = bytes.fromhex(encrypted_request.encryptedObjectBcsHex)
 
-        # Start background verification pipeline with session object ID
-        # Pipeline will read from disk and clean up the file when done
-        pipeline = get_verification_pipeline()
-        background_tasks.add_task(
-            pipeline.run_from_file,
-            session_object_id,  # Pass object ID instead of UUID
-            temp_file_path,
-            metadata_dict
-        )
+                # Decrypt blob (runs in thread pool to avoid blocking)
+                plaintext_bytes = await decrypt_encrypted_blob(
+                    encrypted_request.walrusBlobId,
+                    encrypted_object_bytes,
+                    encrypted_request.sealIdentity
+                )
 
-        # Estimate time based on file size (rough estimate: 1MB per second)
-        estimated_time = min(60, max(10, file_size / (1024 * 1024)))
+                # Write decrypted data to temp file
+                temp_dir = "/tmp/audio-verifier" if os.path.exists("/tmp/audio-verifier") else tempfile.gettempdir()
+                temp_fd, temp_file_path = tempfile.mkstemp(
+                    suffix=".wav",  # Default to .wav, will be detected by soundfile
+                    prefix=f"decrypted_{verification_id}_",
+                    dir=temp_dir
+                )
 
-        return JSONResponse(content={
-            "sessionObjectId": session_object_id,
-            "estimatedTimeSeconds": int(estimated_time),
-            "status": "processing"
-        })
+                with os.fdopen(temp_fd, 'wb') as temp_file:
+                    temp_file.write(plaintext_bytes)
+
+                file_size = len(plaintext_bytes)
+                logger.info(f"Decrypted {file_size} bytes to {temp_file_path}")
+
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid encrypted blob data: {str(e)}")
+            except RuntimeError as e:
+                logger.error(f"Decryption failed: {e}", exc_info=True)
+                raise HTTPException(status_code=502, detail=f"Failed to decrypt encrypted blob: {str(e)}")
+
+            # Get audio duration from decrypted file
+            try:
+                import soundfile as sf
+                with sf.SoundFile(temp_file_path) as sf_file:
+                    frames = len(sf_file)
+                    duration_seconds = frames / float(sf_file.samplerate) if sf_file.samplerate else 0.0
+                logger.info(f"Audio duration: {duration_seconds:.2f}s")
+            except Exception as e:
+                logger.warning(f"Failed to extract audio duration: {e}")
+                duration_seconds = 0
+
+            # Create on-chain verification session with encrypted CID
+            sui_client = get_sui_client()
+            session_object_id = await sui_client.create_session(verification_id, {
+                "encrypted_cid": encrypted_request.walrusBlobId,  # Store encrypted blob ID
+                "plaintext_size_bytes": file_size,
+                "duration_seconds": int(duration_seconds),
+                "file_format": "audio/wav"  # Default, will be detected during verification
+            })
+
+            if not session_object_id:
+                if temp_file_path and os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create on-chain verification session"
+                )
+
+            logger.info(f"Created on-chain session: {session_object_id}")
+
+            # Start background verification pipeline in thread pool to avoid blocking event loop
+            pipeline = get_verification_pipeline()
+            asyncio.create_task(
+                asyncio.to_thread(
+                    _run_pipeline_sync,
+                    pipeline,
+                    session_object_id,
+                    temp_file_path,
+                    metadata_dict
+                )
+            )
+
+            # Estimate time based on file size (rough estimate: 1MB per second)
+            estimated_time = min(60, max(10, file_size / (1024 * 1024)))
+
+            return JSONResponse(content={
+                "sessionObjectId": session_object_id,
+                "estimatedTimeSeconds": int(estimated_time),
+                "status": "processing"
+            })
+
+        else:
+            # Legacy FormData flow (for backwards compatibility)
+            if not ENABLE_LEGACY_UPLOAD:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Legacy file upload disabled. Use encrypted blob flow or set ENABLE_LEGACY_UPLOAD=true"
+                )
+
+            if not file or not metadata:
+                raise HTTPException(status_code=400, detail="Missing file or metadata in FormData request")
+
+            # Parse metadata
+            try:
+                metadata_dict = json.loads(metadata)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid metadata JSON")
+
+            verification_id = str(uuid.uuid4())
+
+            # Stream upload to temp file to avoid loading entire file into RAM
+            temp_dir = "/tmp/audio-verifier" if os.path.exists("/tmp/audio-verifier") else tempfile.gettempdir()
+            temp_fd, temp_file_path = tempfile.mkstemp(
+                suffix=os.path.splitext(file.filename or ".tmp")[1],
+                prefix=f"verify_{verification_id}_",
+                dir=temp_dir
+            )
+
+            file_size = 0
+            try:
+                # Stream file to disk in chunks
+                with os.fdopen(temp_fd, 'wb') as temp_file:
+                    chunk_size = 1024 * 1024  # 1MB chunks
+                    while chunk := await file.read(chunk_size):
+                        temp_file.write(chunk)
+                        file_size += len(chunk)
+            except Exception as e:
+                # Clean up temp file on upload error
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+                raise HTTPException(status_code=400, detail=f"Failed to upload file: {str(e)}")
+
+            if file_size == 0:
+                os.unlink(temp_file_path)
+                raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+            logger.info(f"Creating legacy verification {verification_id} for file: {file.filename} ({file_size} bytes)")
+
+            # Get audio duration from file
+            try:
+                import soundfile as sf
+                with sf.SoundFile(temp_file_path) as sf_file:
+                    frames = len(sf_file)
+                    duration_seconds = frames / float(sf_file.samplerate) if sf_file.samplerate else 0.0
+                logger.info(f"Audio duration: {duration_seconds:.2f}s")
+            except Exception as e:
+                logger.warning(f"Failed to extract audio duration: {e}")
+                duration_seconds = 0
+
+            # Upload plaintext audio to Walrus before verification (legacy flow)
+            if not WALRUS_UPLOAD_URL:
+                os.unlink(temp_file_path)
+                raise HTTPException(
+                    status_code=503,
+                    detail="WALRUS_UPLOAD_URL not configured for legacy upload flow"
+                )
+
+            plaintext_cid = await upload_plaintext_to_walrus(
+                temp_file_path,
+                {
+                    "filename": file.filename,
+                    "contentType": file.content_type,
+                    "metadata": metadata_dict.get("metadata"),
+                }
+            )
+
+            # Create on-chain verification session
+            sui_client = get_sui_client()
+            session_object_id = await sui_client.create_session(verification_id, {
+                "plaintext_cid": plaintext_cid,
+                "plaintext_size_bytes": file_size,
+                "duration_seconds": int(duration_seconds),
+                "file_format": file.content_type or "audio/wav"
+            })
+
+            if not session_object_id:
+                os.unlink(temp_file_path)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create on-chain verification session"
+                )
+
+            logger.info(f"Created on-chain session: {session_object_id}")
+
+            # Start background verification pipeline in thread pool
+            pipeline = get_verification_pipeline()
+            asyncio.create_task(
+                asyncio.to_thread(
+                    _run_pipeline_sync,
+                    pipeline,
+                    session_object_id,
+                    temp_file_path,
+                    metadata_dict
+                )
+            )
+
+            # Estimate time based on file size (rough estimate: 1MB per second)
+            estimated_time = min(60, max(10, file_size / (1024 * 1024)))
+
+            return JSONResponse(content={
+                "sessionObjectId": session_object_id,
+                "estimatedTimeSeconds": int(estimated_time),
+                "status": "processing"
+            })
 
     except HTTPException as exc:
         # Clean up temp file on HTTP exceptions
@@ -386,6 +566,29 @@ async def create_verification(
             status_code=500,
             detail=f"Failed to start verification: {str(e)}"
         )
+
+
+def _run_pipeline_sync(
+    pipeline: VerificationPipeline,
+    session_object_id: str,
+    temp_file_path: str,
+    metadata_dict: Dict[str, Any]
+) -> None:
+    """
+    Synchronous wrapper for pipeline execution (runs in thread pool).
+
+    This ensures the pipeline doesn't block the FastAPI event loop.
+    """
+    import asyncio
+    # Create new event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(
+            pipeline.run_from_file(session_object_id, temp_file_path, metadata_dict)
+        )
+    finally:
+        loop.close()
 
 
 @app.get("/verify/{session_object_id}", dependencies=[Depends(verify_bearer_token)])

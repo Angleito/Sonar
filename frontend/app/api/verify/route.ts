@@ -20,28 +20,58 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Get the form data from the client
-    const formData = await request.formData();
+    const contentType = request.headers.get('content-type') || '';
 
-    // Forward to audio-verifier service with server-side auth token
-    const response = await fetch(`${VERIFIER_URL}/verify`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,
-      },
-      body: formData,
-    });
+    // Check if request is JSON (encrypted blob flow) or FormData (legacy flow)
+    if (contentType.includes('application/json')) {
+      // New encrypted blob flow - JSON payload
+      const payload = await request.json();
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      return NextResponse.json(
-        { error: error.detail || 'Verification service error' },
-        { status: response.status }
-      );
+      // Forward to audio-verifier service with server-side auth token
+      const response = await fetch(`${VERIFIER_URL}/verify`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        return NextResponse.json(
+          { error: error.detail || error.error || 'Verification service error' },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+      return NextResponse.json(data);
+
+    } else {
+      // Legacy FormData flow (for backwards compatibility)
+      const formData = await request.formData();
+
+      // Forward to audio-verifier service with server-side auth token
+      const response = await fetch(`${VERIFIER_URL}/verify`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        return NextResponse.json(
+          { error: error.detail || 'Verification service error' },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+      return NextResponse.json(data);
     }
-
-    const data = await response.json();
-    return NextResponse.json(data);
 
   } catch (error: any) {
     console.error('Failed to proxy verification request:', error);
