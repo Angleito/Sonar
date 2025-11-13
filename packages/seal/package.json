@@ -32,7 +32,7 @@
   "author": "SONAR Protocol",
   "license": "MIT",
   "peerDependencies": {
-    "@mysten/sui": "^1.43.0"
+    "@mysten/sui": "^1.44.0"
   },
   "dependencies": {
     "@mysten/seal": "^0.9.3",

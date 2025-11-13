@@ -102,7 +102,7 @@
         "typescript": "^5.9.3",
       },
       "peerDependencies": {
-        "@mysten/sui": "^1.43.0",
+        "@mysten/sui": "^1.44.0",
       },
     },
     "packages/shared": {

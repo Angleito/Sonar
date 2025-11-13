@@ -3,7 +3,7 @@ import { createGraphQLClient, createGraphQLClients } from './graphql-clients';
 import testnetDeployment from '../../../contracts/deployments/testnet.json';
 import mainnetDeployment from '../../../contracts/deployments/mainnet.json';
 
-const MAINNET_PACKAGE_ID = '0xdff609ce3174576c8a0e81c9f65775e7e7fe5b11c5ef375345fab4ca4b837e9d';
+const MAINNET_PACKAGE_ID = '0x438096a3aea070fc48fde11bfc916768113d2a869da7d558cad4b3a8ac91a69f';
 const MAINNET_MARKETPLACE_ID = '0xb0c09e28efdf70ccdeff2f7ae008ee23961249802bab9682ad4c812957c6a8c6';
 
 const determineNetwork = (): 'mainnet' | 'testnet' | 'devnet' => {

@@ -4,22 +4,22 @@
 
 ### Required Sui CLI Version
 
-**CRITICAL:** You must use Sui CLI v1.43.0 to build and test these contracts.
+**CRITICAL:** You must use Sui CLI v1.60.1 to build and test these contracts.
 
 ```bash
 # Check your current version
 sui --version
 
-# If you see sui 1.57.2 or any version other than 1.43.0, install the matching version:
-cargo install --locked --git https://github.com/MystenLabs/sui.git --tag testnet-v1.43.0 sui --force
+# If you see sui 1.57.2 or any version other than 1.60.1, install the matching version:
+cargo install --locked --git https://github.com/MystenLabs/sui.git --tag mainnet-v1.60.1 sui --force
 ```
 
-**Why?** The Move.toml pins the Sui framework to `testnet-v1.43.0`. Using a mismatched CLI version (like 1.57.2) will cause all tests to fail with `UNEXPECTED_VERIFIER_ERROR (code 2017)` because the test runner expects a different `std::unit_test` module version.
+**Why?** The Move.toml pins the Sui framework to commit `bd272b07244d` (`mainnet-v1.60.1`). Using a mismatched CLI version (like 1.57.2) will cause all tests to fail with `UNEXPECTED_VERIFIER_ERROR (code 2017)` because the test runner expects a different `std::unit_test` module version.
 
 ## Building
 
 ```bash
-# Use the v1.43.0 CLI
+# Use the v1.60.1 CLI
 ~/.cargo/bin/sui move build
 ```
 
@@ -61,7 +61,7 @@ contracts/
 │   ├── economics_tests.move
 │   ├── integration_tests.move
 │   └── admin_tests.move
-└── Move.toml               # Framework: testnet-v1.43.0
+└── Move.toml               # Framework: mainnet-v1.60.1 (rev bd272b07244d)
 ```
 
 ## Documentation
@@ -85,7 +85,7 @@ ERROR move_vm_runtime::logging: [VM] Unexpected verifier/deserialization error!
 Error: VMError { major_status: MISSING_DEPENDENCY, ... location: Module(..., name: "unit_test") }
 ```
 
-**Solution:** Install Sui CLI v1.43.0 (see Prerequisites above)
+**Solution:** Install Sui CLI v1.60.1 (see Prerequisites above)
 
 ### Build warnings about unknown lint filters
 
@@ -94,4 +94,4 @@ You may see:
 warning[W10007]: Unknown warning filter 'lint(public_entry)'
 ```
 
-This is expected and safe to ignore - the lint filter works correctly in v1.43.0 despite the warning message.
+This is expected and safe to ignore - the lint filter works correctly in v1.60.1 despite the warning message.
