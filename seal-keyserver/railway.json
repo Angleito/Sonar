@@ -3,7 +3,7 @@
   "build": {
     "builder": "DOCKERFILE",
     "context": "seal-keyserver",
-    "dockerfilePath": "seal-keyserver/Dockerfile"
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
     "numReplicas": 1,
