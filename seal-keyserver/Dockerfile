@@ -88,7 +88,8 @@ RUN mkdir -p /etc/nix && \
 # shadow provides useradd/userdel/etc for user management
 # coreutils provides /bin/false and other standard utilities
 # bash is required for start.sh script execution
-RUN nix-env -iA nixpkgs.cacert nixpkgs.postgresql.lib nixpkgs.curl nixpkgs.python3 nixpkgs.socat nixpkgs.shadow nixpkgs.coreutils nixpkgs.bash
+# gnused provides sed command used in start.sh
+RUN nix-env -iA nixpkgs.cacert nixpkgs.postgresql.lib nixpkgs.curl nixpkgs.python3 nixpkgs.socat nixpkgs.shadow nixpkgs.coreutils nixpkgs.bash nixpkgs.gnused
 
 # Create directory for binaries
 RUN mkdir -p /opt/key-server/bin
@@ -126,6 +127,7 @@ RUN python3 /app/scripts/setup.py
 # Find where 'false' is located (coreutils installs it in /nix/store/...)
 # Create /bin/false symlink so useradd can find it
 # Also create /bin/bash symlink for start.sh script execution
+# Create /bin/sed symlink for start.sh script execution (line 239)
 RUN mkdir -p /etc /bin && \
     FALSE_PATH=$(which false || echo "") && \
     if [ -n "$FALSE_PATH" ]; then \
@@ -138,6 +140,12 @@ RUN mkdir -p /etc /bin && \
         ln -sf "$BASH_PATH" /bin/bash || cp "$BASH_PATH" /bin/bash; \
     else \
         echo "❌ Error: bash not found after installation" && exit 1; \
+    fi && \
+    SED_PATH=$(which sed || echo "") && \
+    if [ -n "$SED_PATH" ]; then \
+        ln -sf "$SED_PATH" /bin/sed || cp "$SED_PATH" /bin/sed; \
+    else \
+        echo "❌ Error: sed not found after installation" && exit 1; \
     fi
 
 # Initialize system files for manual user creation
