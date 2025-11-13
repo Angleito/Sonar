@@ -57,10 +57,11 @@ RUN nix-env -iA nixpkgs.python313 nixpkgs.gcc nixpkgs.rustc nixpkgs.cargo nixpkg
 
 # Set up library paths for runtime (needed for numpy C extensions)
 # Find gcc's libstdc++ and add to LD_LIBRARY_PATH
-RUN GCC_LIB_DIR=$(find /nix/store -name "libstdc++.so.6" -type f 2>/dev/null | head -1 | xargs dirname) && \
-    if [ -z "$GCC_LIB_DIR" ]; then \
+RUN LIBSTDCPP_FILE=$(find /nix/store -name "libstdc++.so.6" -type f 2>/dev/null | head -1) && \
+    if [ -z "$LIBSTDCPP_FILE" ]; then \
         echo "❌ Error: libstdc++.so.6 not found in Nix store" && exit 1; \
     fi && \
+    GCC_LIB_DIR=$(dirname "$LIBSTDCPP_FILE") && \
     echo "Found libstdc++ at: $GCC_LIB_DIR" && \
     echo "$GCC_LIB_DIR" > /tmp/gcc_lib_dir.txt && \
     chmod 644 /tmp/gcc_lib_dir.txt && \
