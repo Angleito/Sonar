@@ -36,8 +36,12 @@ COPY seal/ ./seal/
 COPY start.sh build.sh ./
 COPY scripts/build.py ./scripts/
 
+# Verify seal directory structure
+RUN ls -la seal/ | head -20 && \
+    test -f seal/Cargo.toml && echo "✓ Cargo.toml found" || (echo "✗ Cargo.toml missing" && exit 1)
+
 # Build using Cargo with Nix-provided toolchain
-RUN nix-shell default.nix --run "cd seal && \
+RUN nix-shell default.nix --run "cd /build/seal && \
     export CARGO_NET_GIT_FETCH_WITH_CLI=true && \
     cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true && \
     cargo build --bin key-server --release --config net.git-fetch-with-cli=true"
