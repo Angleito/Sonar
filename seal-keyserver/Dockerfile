@@ -93,13 +93,11 @@ RUN mkdir -p /opt/key-server/bin
 COPY --from=builder /build/seal/target/release/key-server /opt/key-server/bin/key-server
 COPY --from=builder /build/seal/target/release/seal-cli /opt/key-server/bin/seal-cli
 
-# Verify binaries were copied successfully with detailed diagnostics
+# Verify binaries were copied successfully
 RUN echo "=== Verifying copied binaries ===" && \
     ls -lah /opt/key-server/bin/ && \
     test -f /opt/key-server/bin/key-server && \
     test -f /opt/key-server/bin/seal-cli && \
-    file /opt/key-server/bin/key-server && \
-    file /opt/key-server/bin/seal-cli && \
     echo "✅ Binaries copied and verified successfully" || \
     (echo "❌ Error: Binaries not found after COPY" && \
      echo "Contents of /opt/key-server/bin:" && \
