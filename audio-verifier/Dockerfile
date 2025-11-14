@@ -21,11 +21,25 @@ WORKDIR /build
 
 # Install Rust/Cargo, git, and gcc (for C linker) for building seal-cli
 # Remove git-minimal first to avoid conflicts, then install full git
+# Install openssl.dev to get development headers and pkg-config files
 RUN nix-env -e git-minimal 2>/dev/null || true && \
-    nix-env -iA nixpkgs.rustc nixpkgs.cargo nixpkgs.git nixpkgs.gcc nixpkgs.pkg-config nixpkgs.openssl nixpkgs.zlib
+    nix-env -iA nixpkgs.rustc nixpkgs.cargo nixpkgs.git nixpkgs.gcc nixpkgs.pkg-config nixpkgs.openssl.dev nixpkgs.zlib
 
 # Clone seal repository and build seal-cli
-RUN git clone https://github.com/MystenLabs/seal.git seal && \
+# Set up OpenSSL paths for Rust's openssl-sys crate
+# Find openssl installation path from nix store
+RUN OPENSSL_PATH=$(find /nix/store -name "openssl" -type d -maxdepth 2 | grep -E "/openssl-[0-9]" | head -1) && \
+    if [ -z "$OPENSSL_PATH" ]; then \
+        OPENSSL_PATH=$(nix-build '<nixpkgs>' -A openssl.dev --no-out-link 2>/dev/null || echo ""); \
+    fi && \
+    if [ -n "$OPENSSL_PATH" ] && [ -d "$OPENSSL_PATH" ]; then \
+        export OPENSSL_DIR="$OPENSSL_PATH" && \
+        export PKG_CONFIG_PATH="${OPENSSL_PATH}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" && \
+        echo "Using OpenSSL at: $OPENSSL_DIR"; \
+    else \
+        echo "Warning: Could not find OpenSSL, build may fail"; \
+    fi && \
+    git clone https://github.com/MystenLabs/seal.git seal && \
     cd seal && \
     git checkout main && \
     export CARGO_NET_GIT_FETCH_WITH_CLI=true && \
