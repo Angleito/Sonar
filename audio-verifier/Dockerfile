@@ -19,20 +19,22 @@ RUN mkdir -p /etc/nix && \
 
 WORKDIR /build
 
-# Install Rust/Cargo, git, gcc, and OpenSSL for building seal-cli
+# Install dependencies and nightly Rust for building seal-cli
 # Remove git-minimal first to avoid conflicts, then install full git
 RUN nix-env -e git-minimal 2>/dev/null || true && \
-    nix-env -iA nixpkgs.rustc nixpkgs.cargo nixpkgs.git nixpkgs.gcc nixpkgs.pkg-config nixpkgs.openssl nixpkgs.openssl.dev nixpkgs.zlib
+    nix-env -iA nixpkgs.git nixpkgs.gcc nixpkgs.pkg-config nixpkgs.openssl nixpkgs.openssl.dev nixpkgs.zlib nixpkgs.curl && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly && \
+    echo 'source ~/.cargo/env' >> ~/.bashrc
 
 # Clone seal repository and build seal-cli (configure OpenSSL paths via nix eval)
 RUN set -eux; \
     git clone https://github.com/MystenLabs/seal.git seal; \
     cd seal; \
     git checkout main; \
+    source ~/.cargo/env; \
     OPENSSL_DEV=$(nix eval --impure --raw --expr 'let pkgs = import <nixpkgs> {}; in pkgs.openssl.dev.outPath'); \
     export PKG_CONFIG_PATH="$OPENSSL_DEV/lib/pkgconfig:${PKG_CONFIG_PATH:-}"; \
     export OPENSSL_NO_VENDOR=1; \
-    export RUSTC_BOOTSTRAP=1; \
     export CARGO_NET_GIT_FETCH_WITH_CLI=true; \
     cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true
 
