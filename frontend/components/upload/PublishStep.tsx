@@ -151,11 +151,13 @@ export function PublishStep({
               });
 
               // Extract dataset ID from objectChanges
+              // Check for both AudioSubmission (single-file) and DatasetSubmission (multi-file)
               if (txDetails.objectChanges) {
                 for (const change of txDetails.objectChanges) {
                   if (change.type === 'created' &&
                       change.objectType &&
-                      change.objectType.includes('::marketplace::AudioSubmission')) {
+                      (change.objectType.includes('::marketplace::AudioSubmission') ||
+                       change.objectType.includes('::marketplace::DatasetSubmission'))) {
                     datasetId = change.objectId;
                     break;
                   }
