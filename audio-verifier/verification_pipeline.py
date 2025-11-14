@@ -4,8 +4,8 @@ Verification Pipeline for SONAR Audio Datasets
 Six-stage pipeline:
 1. Quality Check (AudioQualityChecker)
 2. Copyright Check (Chromaprint + AcoustID)
-3. Transcription (Gemini Audio API)
-4. AI Analysis (Gemini)
+3. Transcription (Whisper via OpenRouter)
+4. AI Analysis (Gemini via OpenRouter)
 5. Aggregation
 6. Finalization
 """
@@ -17,13 +17,19 @@ import tempfile
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
-import google.generativeai as genai
+from openai import OpenAI
 
 from audio_checker import AudioQualityChecker
 from fingerprint import CopyrightDetector
 from sui_client import SuiVerificationClient
 
 logger = logging.getLogger(__name__)
+
+# OpenRouter model identifiers
+OPENROUTER_MODELS = {
+    "TRANSCRIPTION": "mistralai/voxtral-small-24b-2507",  # Voxtral Small for transcription
+    "ANALYSIS": "google/gemini-2.5-flash",  # Gemini 2.5 Flash for analysis
+}
 
 
 class VerificationPipeline:
@@ -37,7 +43,7 @@ class VerificationPipeline:
     def __init__(
         self,
         sui_client: SuiVerificationClient,
-        gemini_api_key: str,
+        openrouter_api_key: str,
         acoustid_api_key: Optional[str] = None,
     ):
         """
@@ -45,14 +51,20 @@ class VerificationPipeline:
 
         Args:
             sui_client: Sui blockchain client for session state
-            gemini_api_key: Google AI Studio API key for Gemini
+            openrouter_api_key: OpenRouter API key for transcription and analysis
             acoustid_api_key: AcoustID API key for copyright detection
         """
         self.sui = sui_client
 
-        # Initialize Gemini
-        genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # Initialize OpenRouter client (OpenAI-compatible API)
+        self.openai_client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=openrouter_api_key,
+            default_headers={
+                "HTTP-Referer": "https://projectsonar.xyz",
+                "X-Title": "SONAR Audio Marketplace",
+            },
+        )
 
         # Initialize quality and copyright checkers
         self.quality_checker = AudioQualityChecker()
@@ -280,42 +292,62 @@ class VerificationPipeline:
         """
         Stage 3: Transcription
 
-        Uses Gemini to transcribe audio to text.
+        Uses Voxtral Small via OpenRouter to transcribe audio to text.
         """
         await self._update_stage(session_object_id, "transcription", 0.55)
 
         try:
-            # Upload audio file to Gemini
-            # Gemini handles large files via chunked upload
-            logger.debug(f"Uploading audio to Gemini: {audio_file_path}")
-            audio_file = genai.upload_file(path=audio_file_path)
+            logger.debug(f"Transcribing audio via OpenRouter Voxtral: {audio_file_path}")
 
-            try:
-                # Generate transcription
-                response = self.model.generate_content([
-                    "Transcribe this audio verbatim. Return only the transcript text, "
-                    "without any additional commentary or formatting.",
-                    audio_file
-                ])
+            # Read audio file as base64 for chat completions API
+            import base64
+            with open(audio_file_path, "rb") as audio_file:
+                audio_bytes = audio_file.read()
+                audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+            
+            # Determine audio MIME type from file extension
+            audio_mime = "audio/wav"
+            if audio_file_path.endswith(".mp3"):
+                audio_mime = "audio/mpeg"
+            elif audio_file_path.endswith(".m4a"):
+                audio_mime = "audio/mp4"
+            elif audio_file_path.endswith(".webm"):
+                audio_mime = "audio/webm"
+            elif audio_file_path.endswith(".flac"):
+                audio_mime = "audio/flac"
 
-                transcript = response.text.strip()
+            # Call Voxtral via OpenRouter chat completions API
+            # OpenRouter uses OpenAI-compatible format for multimodal inputs
+            completion = self.openai_client.chat.completions.create(
+                model=OPENROUTER_MODELS["TRANSCRIPTION"],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Transcribe this audio verbatim. Return only the transcript text, without any additional commentary or formatting."
+                            },
+                            {
+                                "type": "input_audio",
+                                "input_audio": f"data:{audio_mime};base64,{audio_base64}"
+                            }
+                        ]
+                    }
+                ],
+                max_tokens=4096,
+            )
 
-                logger.debug(f"Transcription length: {len(transcript)} chars")
+            transcript = completion.choices[0].message.content.strip()
 
-                await self._update_stage(session_object_id, "transcription", 0.65)
+            logger.debug(f"Transcription length: {len(transcript)} chars")
 
-                return transcript
+            await self._update_stage(session_object_id, "transcription", 0.65)
 
-            finally:
-                # IMPORTANT: Delete file from Gemini's storage after use
-                try:
-                    genai.delete_file(audio_file.name)
-                    logger.debug(f"Deleted Gemini file: {audio_file.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete Gemini file: {e}")
+            return transcript
 
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
+            logger.error(f"Transcription failed: {e}", exc_info=True)
             raise Exception(f"Failed to transcribe audio: {str(e)}")
 
     async def _stage_analysis(
@@ -328,7 +360,7 @@ class VerificationPipeline:
         """
         Stage 4: AI Analysis
 
-        Uses Gemini to analyze content quality, safety, and value.
+        Uses Gemini Flash via OpenRouter to analyze content quality, safety, and value.
         """
         await self._update_stage(session_object_id, "analysis", 0.75)
 
@@ -336,8 +368,20 @@ class VerificationPipeline:
         prompt = self._build_analysis_prompt(transcript, metadata, quality_info)
 
         try:
-            response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
+            # Call Gemini 2.5 Flash via OpenRouter
+            completion = self.openai_client.chat.completions.create(
+                model=OPENROUTER_MODELS["ANALYSIS"],
+                max_tokens=2048,
+                temperature=0.3,  # Lower temperature for consistent analysis
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                ],
+            )
+
+            response_text = completion.choices[0].message.content.strip()
 
             # Parse JSON response
             analysis = self._parse_analysis_response(response_text)
@@ -347,7 +391,7 @@ class VerificationPipeline:
             return analysis
 
         except Exception as e:
-            logger.error(f"Analysis failed: {e}")
+            logger.error(f"Analysis failed: {e}", exc_info=True)
             await self._update_stage(session_object_id, "analysis", 0.85)
             # Return safe defaults if analysis fails
             return {

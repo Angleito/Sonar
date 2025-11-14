@@ -6,8 +6,8 @@ Comprehensive audio verification service for the SONAR Protocol. Verifies audio 
 
 - **Quality Analysis**: Sample rate, duration, clipping, silence detection
 - **Copyright Detection**: Chromaprint + AcoustID fingerprinting
-- **AI Transcription**: Google Gemini 2.0 Flash for speech-to-text
-- **Content Analysis**: AI-powered quality scoring and safety screening using Gemini
+- **AI Transcription**: Mistral Voxtral Small via OpenRouter for speech-to-text
+- **Content Analysis**: AI-powered quality scoring and safety screening using Gemini 2.5 Flash via OpenRouter
 - **Stateful Pipeline**: Progress tracking recorded directly on Sui blockchain
 - **Secure**: Bearer token authentication, CORS protection, file size limits
 
@@ -41,7 +41,7 @@ cp .env.example .env
 ```
 
 Required environment variables (production):
-- `GEMINI_API_KEY` – Speech-to-text & analysis via Gemini
+- `OPENROUTER_API_KEY` – Speech-to-text & analysis via OpenRouter (get key at https://openrouter.ai/keys)
 - `ACOUSTID_API_KEY` – Chromaprint fingerprint lookup (https://acoustid.org/api-key)
 - `VERIFIER_AUTH_TOKEN` – Random 256-bit token for bearer auth (`openssl rand -hex 32`)
 - `ALLOWED_ORIGINS` – Comma-separated list of allowed frontend origins
@@ -173,7 +173,7 @@ The service runs a 6-stage pipeline:
 railway up
 
 # Set environment variables in Railway dashboard
-railway variables set GEMINI_API_KEY=xxx
+railway variables set OPENROUTER_API_KEY=xxx
 railway variables set KV_REST_API_URL=xxx
 railway variables set KV_REST_API_TOKEN=xxx
 railway variables set VERIFIER_AUTH_TOKEN=xxx
@@ -195,7 +195,7 @@ railway variables set WALRUS_UPLOAD_TOKEN=secrettoken
 fly launch
 
 # Set secrets
-fly secrets set GEMINI_API_KEY=xxx
+fly secrets set OPENROUTER_API_KEY=xxx
 fly secrets set VERIFIER_AUTH_TOKEN=xxx
 fly secrets set ACOUSTID_API_KEY=xxx
 fly secrets set ALLOWED_ORIGINS=https://app.yourfrontend.com
@@ -261,9 +261,9 @@ Install system dependencies:
 apt-get install libchromaprint-tools ffmpeg
 ```
 
-### Gemini API errors
+### OpenRouter API errors
 
-- Check `GEMINI_API_KEY` is valid
+- Check `OPENROUTER_API_KEY` is valid (get key at https://openrouter.ai/keys)
 - Verify API quota hasn't been exceeded
 - Check file is a supported audio format (WAV, MP3, M4A, etc.)
 

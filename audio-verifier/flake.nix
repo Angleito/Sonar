@@ -107,7 +107,7 @@
           # This is a simplified version - may need custom handling
           postInstall = ''
             # Install remaining packages via pip if needed
-            pip install --prefix=$out pysui google-generativeai librosa soundfile pyacoustid pydub cryptography || true
+            pip install --prefix=$out pysui openai librosa soundfile pyacoustid pydub cryptography || true
           '';
         };
       }

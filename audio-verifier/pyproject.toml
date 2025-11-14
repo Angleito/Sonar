@@ -21,8 +21,8 @@ dependencies = [
     # HTTP client (Vercel KV REST API)
     "httpx>=0.25.0",
 
-    # AI transcription & analysis
-    "google-generativeai>=0.3.0",
+    # AI transcription & analysis (via OpenRouter)
+    "openai>=1.0.0",
 
     # Sui blockchain integration
     "pysui>=0.93.0",

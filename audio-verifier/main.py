@@ -49,8 +49,8 @@ SUI_PACKAGE_ID = os.getenv("SUI_PACKAGE_ID")
 SUI_SESSION_REGISTRY_ID = os.getenv("SUI_SESSION_REGISTRY_ID")
 SUI_VALIDATOR_CAP_ID = os.getenv("SUI_VALIDATOR_CAP_ID")
 
-# Gemini API configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# OpenRouter API configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # AcoustID API configuration
 ACOUSTID_API_KEY = os.getenv("ACOUSTID_API_KEY")
@@ -74,8 +74,8 @@ SEAL_KEY_SERVER_IDS = [k.strip() for k in SEAL_KEY_SERVER_IDS if k.strip()]
 # Feature flag for legacy upload support
 ENABLE_LEGACY_UPLOAD = os.getenv("ENABLE_LEGACY_UPLOAD", "false").lower() == "true"
 
-if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY must be set for audio transcription and analysis")
+if not OPENROUTER_API_KEY:
+    raise RuntimeError("OPENROUTER_API_KEY must be set for audio transcription and analysis")
 
 if not ACOUSTID_API_KEY:
     raise RuntimeError("ACOUSTID_API_KEY must be set for copyright detection")
@@ -143,15 +143,15 @@ def get_verification_pipeline() -> VerificationPipeline:
     """Get or create verification pipeline instance."""
     global _verification_pipeline
     if _verification_pipeline is None:
-        if not GEMINI_API_KEY:
+        if not OPENROUTER_API_KEY:
             raise HTTPException(
                 status_code=500,
-                detail="Gemini API not configured (GEMINI_API_KEY required)"
+                detail="OpenRouter API not configured (OPENROUTER_API_KEY required)"
             )
         sui_client = get_sui_client()
         _verification_pipeline = VerificationPipeline(
             sui_client,
-            GEMINI_API_KEY,
+            OPENROUTER_API_KEY,
             ACOUSTID_API_KEY
         )
         logger.info("Initialized verification pipeline with Sui blockchain backend")
@@ -263,8 +263,8 @@ async def root():
         "features": [
             "Audio quality analysis",
             "Copyright detection (Chromaprint/AcoustID)",
-            "AI transcription (Gemini)",
-            "Content safety analysis (Gemini)"
+            "AI transcription (Whisper via OpenRouter)",
+            "Content safety analysis (Gemini via OpenRouter)"
         ]
     }
 
@@ -274,7 +274,7 @@ async def health():
     """Health check endpoint"""
     config_status = {
         "sui_configured": True,
-        "gemini_configured": bool(GEMINI_API_KEY),
+        "openrouter_configured": bool(OPENROUTER_API_KEY),
         "acoustid_configured": bool(ACOUSTID_API_KEY),
         "walrus_upload_configured": bool(WALRUS_UPLOAD_URL),  # Legacy
         "walrus_aggregator_configured": bool(WALRUS_AGGREGATOR_URL),  # New
