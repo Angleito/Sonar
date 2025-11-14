@@ -95,7 +95,16 @@ export function VerificationStep({
       // New encrypted blob flow
       const blobId = walrusUpload?.blobId || walrusBlobId!;
       const identity = walrusUpload?.seal_policy_id || sealIdentity!;
-      const encryptedObjectHex = walrusUpload?.encryptedObjectBcsHex || encryptedObjectBcsHex!;
+      const encryptedObjectHex = walrusUpload?.encryptedObjectBcsHex || encryptedObjectBcsHex;
+
+      // Validate that encryptedObjectBcsHex is present and not empty
+      if (!encryptedObjectHex || encryptedObjectHex.trim().length === 0) {
+        const errorMsg = 'Missing encrypted object data. Please try encrypting again.';
+        setErrorMessage(errorMsg);
+        setVerificationState('failed');
+        onError(errorMsg);
+        return;
+      }
 
       setTotalFiles(1);
       setCurrentFileIndex(0);
