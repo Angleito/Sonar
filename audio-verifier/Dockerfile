@@ -19,10 +19,10 @@ RUN mkdir -p /etc/nix && \
 
 WORKDIR /build
 
-# Install Rust/Cargo and git for building seal-cli
+# Install Rust/Cargo, git, and gcc (for C linker) for building seal-cli
 # Remove git-minimal first to avoid conflicts, then install full git
 RUN nix-env -e git-minimal 2>/dev/null || true && \
-    nix-env -iA nixpkgs.rustc nixpkgs.cargo nixpkgs.git nixpkgs.pkg-config nixpkgs.openssl nixpkgs.zlib
+    nix-env -iA nixpkgs.rustc nixpkgs.cargo nixpkgs.git nixpkgs.gcc nixpkgs.pkg-config nixpkgs.openssl nixpkgs.zlib
 
 # Clone seal repository and build seal-cli
 RUN git clone https://github.com/MystenLabs/seal.git seal && \
