@@ -129,7 +129,7 @@ def _fetch_walrus_blob(blob_id: str) -> bytes:
     """Fetch encrypted blob from Walrus aggregator with retry logic for propagation delays."""
     import time
 
-    url = f"{WALRUS_AGGREGATOR_URL.rstrip('/')}/blob/{blob_id}"
+    url = f"{WALRUS_AGGREGATOR_URL.rstrip('/')}/v1/blobs/{blob_id}"
 
     headers = {}
     if WALRUS_AGGREGATOR_TOKEN:
