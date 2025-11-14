@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildVerifierUrl } from '@/lib/config/verifier';
+import { proxyVerifyRequest } from '@/lib/server/verifyProxy';
 
 /**
  * Server-side proxy for audio-verifier service
@@ -9,16 +9,7 @@ import { buildVerifierUrl } from '@/lib/config/verifier';
  * with the auth token.
  */
 
-const VERIFIER_AUTH_TOKEN = process.env.VERIFIER_AUTH_TOKEN;
-
 export async function POST(request: NextRequest) {
-  if (!VERIFIER_AUTH_TOKEN) {
-    return NextResponse.json(
-      { error: 'VERIFIER_AUTH_TOKEN not configured on server' },
-      { status: 500 }
-    );
-  }
-
   try {
     const contentType = request.headers.get('content-type') || '';
 
@@ -26,51 +17,24 @@ export async function POST(request: NextRequest) {
     if (contentType.includes('application/json')) {
       // New encrypted blob flow - JSON payload
       const payload = await request.json();
-
-      // Forward to audio-verifier service with server-side auth token
-      const response = await fetch(buildVerifierUrl('verify'), {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,
-          'Content-Type': 'application/json',
+      const result = await proxyVerifyRequest({
+        body: {
+          mode: 'json',
+          payload,
         },
-        body: JSON.stringify(payload),
       });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        return NextResponse.json(
-          { error: error.detail || error.error || 'Verification service error' },
-          { status: response.status }
-        );
-      }
-
-      const data = await response.json();
-      return NextResponse.json(data);
+      return NextResponse.json(result.data, { status: result.status });
 
     } else {
       // Legacy FormData flow (for backwards compatibility)
       const formData = await request.formData();
-
-      // Forward to audio-verifier service with server-side auth token
-      const response = await fetch(buildVerifierUrl('verify'), {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,
+      const result = await proxyVerifyRequest({
+        body: {
+          mode: 'formData',
+          payload: formData,
         },
-        body: formData,
       });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        return NextResponse.json(
-          { error: error.detail || 'Verification service error' },
-          { status: response.status }
-        );
-      }
-
-      const data = await response.json();
-      return NextResponse.json(data);
+      return NextResponse.json(result.data, { status: result.status });
     }
 
   } catch (error: any) {
