@@ -36,22 +36,6 @@ interface PublishStepProps {
 const UPLOAD_FEE_MIST = 250_000_000; // 0.25 SUI expressed in MIST (1 SUI = 1_000_000_000 MIST)
 const MIST_PER_SUI = 1_000_000_000;
 
-type SharedOwner = {
-  Shared: {
-    initial_shared_version: string;
-    mutable: boolean;
-  };
-};
-
-function isSharedObjectOwner(owner: unknown): owner is SharedOwner {
-  return (
-    !!owner &&
-    typeof owner === 'object' &&
-    'Shared' in owner &&
-    typeof (owner as SharedOwner).Shared?.initial_shared_version !== 'undefined'
-  );
-}
-
 function formatMistToSui(mist: number) {
   const value = mist / MIST_PER_SUI;
   return Number(value.toFixed(9)).toString();
@@ -97,30 +81,7 @@ export function PublishStep({
       const tx = new Transaction();
       tx.setGasBudget(50_000_000); // 0.05 SUI
 
-      const marketplaceResponse = await suiClient.getObject({
-        id: CHAIN_CONFIG.marketplaceId,
-        options: { showOwner: true },
-      });
-
-      if (!marketplaceResponse.data) {
-        throw new Error('Unable to load marketplace data from the blockchain.');
-      }
-
-      const marketplaceOwner = marketplaceResponse.data.owner;
-
-      if (!isSharedObjectOwner(marketplaceOwner)) {
-        throw new Error('Marketplace contract is not shared or could not be resolved.');
-      }
-
-      if (!marketplaceOwner.Shared.mutable) {
-        throw new Error('Marketplace contract is not mutable. Please contact support.');
-      }
-
-      const marketplaceSharedRef = tx.sharedObjectRef({
-        objectId: CHAIN_CONFIG.marketplaceId,
-        initialSharedVersion: marketplaceOwner.Shared.initial_shared_version,
-        mutable: true,
-      });
+      const marketplaceSharedRef = tx.object(CHAIN_CONFIG.marketplaceId);
 
       // Check if multi-file dataset
       const isMultiFile = walrusUpload.files && walrusUpload.files.length > 0;
