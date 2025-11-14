@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Mark as Edge Runtime
 export const runtime = 'edge';
+export const maxDuration = 300; // Vercel Pro max timeout
 
 const WALRUS_PUBLISHER_URL =
   process.env.NEXT_PUBLIC_WALRUS_PUBLISHER_URL ||
@@ -14,6 +15,59 @@ const WALRUS_AGGREGATOR_URL =
 const BLOCKBERRY_API_KEY = process.env.BLOCKBERRY_API_KEY || '';
 
 /**
+ * Retry fetch with progressive delays
+ * @param maxRetries Maximum number of retry attempts
+ * @returns Fetch response with retry metadata
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 10
+): Promise<{ response: Response; attempt: number }> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout per attempt
+
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return { response, attempt };
+      }
+
+      // Non-200 response, retry if not the last attempt
+      if (attempt < maxRetries) {
+        const delayMs = attempt * 2000; // Progressive: 2s, 4s, 6s, 8s...
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      return { response, attempt };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // If last attempt, throw error
+      if (attempt === maxRetries) {
+        throw lastError;
+      }
+
+      // Retry with progressive delay
+      const delayMs = attempt * 2000; // Progressive: 2s, 4s, 6s, 8s...
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError || new Error('Upload failed after all retry attempts');
+}
+
+/**
  * Edge Function: Walrus Upload Proxy
  * Streams encrypted audio blob to Walrus aggregator
  *
@@ -22,7 +76,7 @@ const BLOCKBERRY_API_KEY = process.env.BLOCKBERRY_API_KEY || '';
  *   - file: encrypted blob
  *   - seal_policy_id: Seal identity for decryption
  *   - epochs: (optional) Number of epochs to store (default: Walrus default)
- * Returns: { blobId: string, certifiedEpoch: number }
+ * Returns: { blobId: string, certifiedEpoch: number, retryAttempt: number }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -83,19 +137,24 @@ export async function POST(request: NextRequest) {
       headers['X-API-Key'] = BLOCKBERRY_API_KEY;
     }
 
-    const uploadResponse = await fetch(walrusUrl, {
-      method: 'PUT',
-      body: file,
-      headers,
-    });
+    const { response: uploadResponse, attempt: retryAttempt } = await fetchWithRetry(
+      walrusUrl,
+      {
+        method: 'PUT',
+        body: file,
+        headers,
+      },
+      10 // Max 10 retries
+    );
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text();
-      console.error('Walrus upload failed:', errorText);
+      console.error(`Walrus upload failed on attempt ${retryAttempt}:`, errorText);
       return NextResponse.json(
         {
           error: 'Failed to upload to Walrus',
           details: errorText,
+          retryAttempt,
         },
         { status: uploadResponse.status }
       );
@@ -128,6 +187,7 @@ export async function POST(request: NextRequest) {
       fileSize: file.size,
       seal_policy_id: sealPolicyId,
       strategy: 'blockberry', // Current upload strategy
+      retryAttempt, // Include which attempt succeeded
       ...(metadata && { metadata }), // Include metadata if provided
     });
   } catch (error) {

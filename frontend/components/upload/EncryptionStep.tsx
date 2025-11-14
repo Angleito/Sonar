@@ -178,7 +178,7 @@ export function EncryptionStep({
 
         // Step 3: Upload to Walrus using parallel upload hook
         setStage('uploading-walrus');
-        addLog(`[File ${index + 1}/${totalFiles}] Uploading to Walrus via ${strategy}...`);
+        addLog(`[File ${index + 1}/${totalFiles}] Uploading to Walrus via ${strategy}... (Attempt ${uploadProgress.currentRetry ?? 1}/${uploadProgress.maxRetries ?? 10})`);
 
         const encryptedBlob = new Blob([new Uint8Array(encryptionResult.encryptedData)]);
         const walrusResult = await uploadBlob(
@@ -375,6 +375,11 @@ export function EncryptionStep({
           className="mt-6 text-lg font-mono text-sonar-highlight-bright"
         >
           {stages[currentStageIndex]?.label}
+          {uploadProgress.currentRetry && uploadProgress.currentRetry > 1 && (
+            <span className="text-sm text-sonar-coral ml-2">
+              (Retry {uploadProgress.currentRetry}/{uploadProgress.maxRetries})
+            </span>
+          )}
         </motion.p>
 
         {/* Multi-file progress indicator */}
@@ -470,6 +475,11 @@ export function EncryptionStep({
               Only you control the decryption keys.
               {isMultiFile && ' Multiple files are processed in parallel for faster uploads.'}
             </p>
+            {uploadProgress.currentRetry && uploadProgress.currentRetry > 1 && (
+              <p className="text-sonar-coral">
+                Retrying upload (Attempt {uploadProgress.currentRetry}/{uploadProgress.maxRetries})...
+              </p>
+            )}
           </div>
         </div>
       </GlassCard>

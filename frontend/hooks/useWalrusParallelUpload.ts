@@ -22,6 +22,8 @@ export interface WalrusUploadProgress {
   fileProgress: number; // 0-100
   totalProgress: number; // 0-100
   stage: 'encrypting' | 'uploading' | 'finalizing' | 'completed';
+  currentRetry?: number; // Current retry attempt (1-10)
+  maxRetries?: number; // Max retry attempts
 }
 
 export interface WalrusUploadResult {
@@ -93,6 +95,64 @@ export function useWalrusParallelUpload() {
   });
 
   /**
+   * Fetch upload with client-side retry tracking and progress updates
+   */
+  const fetchUploadWithRetry = useCallback(async (
+    formData: FormData,
+    maxRetries: number = 10
+  ): Promise<{ response: Response; attempt: number }> => {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Update progress with retry attempt
+        setProgress((prev) => ({
+          ...prev,
+          currentRetry: attempt,
+          maxRetries,
+        }));
+
+        // Create a new FormData for each attempt (since body can only be read once)
+        const attemptFormData = new FormData();
+        for (const [key, value] of formData.entries()) {
+          attemptFormData.append(key, value);
+        }
+
+        const response = await fetch('/api/edge/walrus/upload', {
+          method: 'POST',
+          body: attemptFormData,
+        });
+
+        if (response.ok) {
+          return { response, attempt };
+        }
+
+        // Non-200 response, retry if not the last attempt
+        if (attempt < maxRetries) {
+          const delayMs = attempt * 2000; // Progressive: 2s, 4s, 6s...
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+
+        return { response, attempt };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // If last attempt, throw error
+        if (attempt === maxRetries) {
+          throw lastError;
+        }
+
+        // Retry with progressive delay
+        const delayMs = attempt * 2000; // Progressive: 2s, 4s, 6s...
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+
+    throw lastError || new Error('Upload failed after all retry attempts');
+  }, []);
+
+  /**
    * Upload encrypted blob to Walrus using Blockberry HTTP API
    */
   const uploadViaBlockberry = useCallback(async (
@@ -101,7 +161,7 @@ export function useWalrusParallelUpload() {
     metadata: WalrusUploadMetadata,
     options: UploadBlobOptions = {}
   ): Promise<{ blobId: string; previewBlobId?: string; mimeType?: string; previewMimeType?: string }> => {
-    // Call existing Blockberry upload endpoint
+    // Call existing Blockberry upload endpoint with retries
     const formData = new FormData();
     formData.append('file', encryptedBlob, options.fileName ?? 'encrypted-audio.bin');
     formData.append('seal_policy_id', seal_policy_id);
@@ -109,13 +169,10 @@ export function useWalrusParallelUpload() {
       formData.append('metadata', JSON.stringify(metadata));
     }
 
-    const response = await fetch('/api/edge/walrus/upload', {
-      method: 'POST',
-      body: formData,
-    });
+    const { response, attempt } = await fetchUploadWithRetry(formData, 10);
 
     if (!response.ok) {
-      throw new Error(`Blockberry upload failed: ${response.statusText}`);
+      throw new Error(`Blockberry upload failed on attempt ${attempt}: ${response.statusText}`);
     }
 
     const result = await response.json();
@@ -153,7 +210,7 @@ export function useWalrusParallelUpload() {
       mimeType: normalizeAudioMimeType(options.mimeType) ?? undefined,
       previewMimeType: effectivePreviewMimeType,
     };
-  }, []);
+  }, [fetchUploadWithRetry]);
 
   /**
    * Sponsored parallel upload prototype
