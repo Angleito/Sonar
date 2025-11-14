@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildVerifierUrl } from '@/lib/config/verifier';
 
 /**
  * Server-side proxy for audio-verifier service
@@ -8,7 +9,6 @@ import { NextRequest, NextResponse } from 'next/server';
  * with the auth token.
  */
 
-const VERIFIER_URL = process.env.AUDIO_VERIFIER_URL || 'http://localhost:8000';
 const VERIFIER_AUTH_TOKEN = process.env.VERIFIER_AUTH_TOKEN;
 
 export async function POST(request: NextRequest) {
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       const payload = await request.json();
 
       // Forward to audio-verifier service with server-side auth token
-      const response = await fetch(`${VERIFIER_URL}/verify`, {
+      const response = await fetch(buildVerifierUrl('verify'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData();
 
       // Forward to audio-verifier service with server-side auth token
-      const response = await fetch(`${VERIFIER_URL}/verify`, {
+      const response = await fetch(buildVerifierUrl('verify'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,

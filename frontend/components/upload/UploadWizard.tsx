@@ -5,7 +5,12 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { UploadStep, UploadWizardState, WalrusUploadResult } from '@/lib/types/upload';
+import {
+  UploadStep,
+  UploadWizardState,
+  WalrusUploadResult,
+  VerificationResult,
+} from '@/lib/types/upload';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { FileUploadStep } from './FileUploadStep';
 import { MetadataStep } from './MetadataStep';
@@ -57,17 +62,45 @@ const STORAGE_KEY = 'sonar-upload-wizard-state';
  */
 export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
   const [state, setState] = useState<UploadWizardState>(INITIAL_STATE);
+  const [persistenceDisabled, setPersistenceDisabled] = useState(false);
+
+  const sanitizeWalrusUpload = (walrusUpload: WalrusUploadResult | null) => {
+    if (!walrusUpload) return null;
+    return {
+      blobId: walrusUpload.blobId,
+      previewBlobId: walrusUpload.previewBlobId,
+      seal_policy_id: walrusUpload.seal_policy_id,
+      bundleDiscountBps: walrusUpload.bundleDiscountBps,
+      mimeType: walrusUpload.mimeType,
+      previewMimeType: walrusUpload.previewMimeType,
+    };
+  };
+
+  const sanitizeVerification = (verification: VerificationResult | null) => {
+    if (!verification) return null;
+    return {
+      id: verification.id,
+      state: verification.state,
+      currentStage: verification.currentStage,
+      qualityScore: verification.qualityScore,
+      safetyPassed: verification.safetyPassed,
+      insights: verification.insights ? verification.insights.slice(0, 5) : undefined,
+      updatedAt: verification.updatedAt,
+    };
+  };
 
   // Serialize state for localStorage (exclude large binary data)
   const serializeState = (state: UploadWizardState) => {
     return {
       ...state,
       // Remove large File objects
-      audioFile: state.audioFile ? {
-        duration: state.audioFile.duration,
-        id: state.audioFile.id,
-        // Skip 'file', 'waveform', 'preview' - these are large
-      } : null,
+      audioFile: state.audioFile
+        ? {
+            duration: state.audioFile.duration,
+            id: state.audioFile.id,
+            // Skip 'file', 'waveform', 'preview' - these are large
+          }
+        : null,
       audioFiles: Array.isArray(state.audioFiles)
         ? state.audioFiles.map((f) => ({
             duration: f.duration,
@@ -75,12 +108,15 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
           }))
         : [],
       // Remove large binary data from encryption result
-      encryption: state.encryption ? {
-        seal_policy_id: state.encryption.seal_policy_id,
-        metadata: state.encryption.metadata,
-        // Skip 'encryptedBlob', 'previewBlob', 'backupKey' - these are large or sensitive
-      } : null,
-      // walrusUpload only has IDs and metadata, safe to keep
+      encryption: state.encryption
+        ? {
+            seal_policy_id: state.encryption.seal_policy_id,
+            metadata: state.encryption.metadata,
+            // Skip 'encryptedBlob', 'previewBlob', 'backupKey' - these are large or sensitive
+          }
+        : null,
+      walrusUpload: sanitizeWalrusUpload(state.walrusUpload),
+      verification: sanitizeVerification(state.verification),
     };
   };
 
@@ -91,6 +127,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
     } catch (e) {
       console.error('Failed to clear wizard state:', e);
     }
+    setPersistenceDisabled(false);
   };
 
   const resetWizardState = () => {
@@ -126,6 +163,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
 
     clearStoredWizardState();
     resetWizardState();
+    setPersistenceDisabled(false);
   };
 
   // Persist wizard state to localStorage for recovery
@@ -155,7 +193,12 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
   }, [open]);
 
   useEffect(() => {
-    if (!open || state.step === 'success' || typeof window === 'undefined') {
+    if (
+      !open ||
+      state.step === 'success' ||
+      typeof window === 'undefined' ||
+      persistenceDisabled
+    ) {
       return;
     }
 
@@ -167,9 +210,10 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
       // If still quota exceeded, clear localStorage
       if (e instanceof DOMException && e.name === 'QuotaExceededError') {
         localStorage.removeItem(STORAGE_KEY);
+        setPersistenceDisabled(true);
       }
     }
-  }, [state, open]);
+  }, [state, open, persistenceDisabled]);
 
   const currentStepIndex = STEPS.indexOf(state.step);
   const progress = ((currentStepIndex + 1) / STEPS.length) * 100;
@@ -242,7 +286,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
           </div>
 
           {/* Progress Bar */}
-          <div className="mb-8">
+          <div className="mb-4">
             <div className="h-1 bg-sonar-blue/20 rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-gradient-to-r from-sonar-signal to-sonar-blue"
@@ -252,6 +296,18 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
               />
             </div>
           </div>
+
+          {persistenceDisabled && (
+            <div
+              className={cn(
+                'mb-6 p-3 rounded-sonar text-sm font-mono',
+                'bg-sonar-coral/15 border border-sonar-coral/60 text-sonar-coral'
+              )}
+            >
+              Browser storage is full. Autosave is temporarily disabled, but your current session
+              will continue. Close the wizard only after publishing or discarding the draft.
+            </div>
+          )}
 
           {/* Step Content */}
           <AnimatePresence mode="wait">

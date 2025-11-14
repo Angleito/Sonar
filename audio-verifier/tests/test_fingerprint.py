@@ -50,3 +50,4 @@ async def test_copyright_detector_handles_missing_backend(monkeypatch, tmp_path)
     assert result["copyright"]["checked"] is False
     assert "Chromaprint not installed" in result["copyright"]["error"]
 
+

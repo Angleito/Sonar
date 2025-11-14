@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildVerifierUrl } from '@/lib/config/verifier';
 
 /**
  * Server-side proxy for audio-verifier service polling
@@ -6,7 +7,6 @@ import { NextRequest, NextResponse } from 'next/server';
  * SECURITY: Keeps VERIFIER_AUTH_TOKEN server-side.
  */
 
-const VERIFIER_URL = process.env.AUDIO_VERIFIER_URL || 'http://localhost:8000';
 const VERIFIER_AUTH_TOKEN = process.env.VERIFIER_AUTH_TOKEN;
 
 export async function GET(
@@ -24,7 +24,7 @@ export async function GET(
 
   try {
     // Forward to audio-verifier service with server-side auth token
-    const response = await fetch(`${VERIFIER_URL}/verify/${id}`, {
+    const response = await fetch(buildVerifierUrl(`verify/${id}`), {
       headers: {
         'Authorization': `Bearer ${VERIFIER_AUTH_TOKEN}`,
       },

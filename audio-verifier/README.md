@@ -224,12 +224,12 @@ docker run -p 8000:8000 \
 
 ## Frontend Integration
 
-After deploying the service, update your frontend environment variables:
+After deploying the service, update your frontend environment variables (server-only):
 
 ```bash
 # frontend/.env.local
-NEXT_PUBLIC_AUDIO_VERIFIER_URL=https://your-verifier.railway.app
-NEXT_PUBLIC_VERIFIER_AUTH_TOKEN=your_random_256_bit_token
+AUDIO_VERIFIER_URL=https://audio-verifier.projectsonar.xyz
+VERIFIER_AUTH_TOKEN=your_random_256_bit_token
 ```
 
 The frontend `VerificationStep` component automatically:
