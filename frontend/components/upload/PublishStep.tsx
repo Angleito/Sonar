@@ -199,14 +199,7 @@ export function PublishStep({
                 }
               }
 
-              // Fallback 1: Check effects.created array
-              if (!datasetId && txDetails.effects?.created) {
-                console.log('Checking effects.created:', txDetails.effects.created);
-                // effects.created contains object references, but we need to fetch the object to get its type
-                // This is less efficient, so we'll try events first
-              }
-
-              // Fallback 2: Extract from events if objectChanges didn't work
+              // Fallback 1: Extract from events if objectChanges didn't work
               // The contract emits SubmissionCreated or DatasetSubmissionCreated events with submission_id
               if (!datasetId && txDetails.events && CHAIN_CONFIG.packageId) {
                 console.log('Trying to extract dataset ID from events (full):', JSON.stringify(txDetails.events, null, 2));
@@ -229,12 +222,74 @@ export function PublishStep({
                 }
               }
               
-              // Fallback 3: Try to get object ID from effects.created and verify its type
-              if (!datasetId && txDetails.effects?.created && CHAIN_CONFIG.packageId) {
-                console.log('Checking effects.created as final fallback:', txDetails.effects.created);
-                // For each created object reference, we'd need to fetch it to check its type
-                // This is expensive, so we only do it as a last resort
-                // For now, we'll rely on the detailed logging above to diagnose the issue
+              // Fallback 2: Check effects.created and fetch objects to verify their types
+              // This handles cases where objectChanges doesn't show created objects
+              if (!datasetId && txDetails.effects?.created) {
+                console.log('Checking effects.created:', JSON.stringify(txDetails.effects.created, null, 2));
+                
+                // Fetch each created object to check its type
+                for (const createdRef of txDetails.effects.created) {
+                  try {
+                    const objectId = (createdRef as any).reference?.objectId || (createdRef as any).objectId;
+                    if (!objectId) continue;
+                    
+                    console.log('Fetching created object to check type:', objectId);
+                    const obj = await suiClient.getObject({
+                      id: objectId,
+                      options: { showType: true, showContent: false },
+                    });
+                    
+                    const objectType = obj.data?.type;
+                    console.log('Created object type:', objectType);
+                    
+                    if (objectType &&
+                        (objectType.includes('::marketplace::AudioSubmission') ||
+                         objectType.includes('::marketplace::DatasetSubmission'))) {
+                      datasetId = objectId;
+                      console.log('Found dataset ID from effects.created:', datasetId);
+                      break;
+                    }
+                  } catch (err) {
+                    console.warn('Failed to fetch created object:', err);
+                    // Continue to next object
+                  }
+                }
+              }
+              
+              // Fallback 3: Check effects.mutated for objects that might be our submission
+              // Sometimes objects are created and immediately mutated in the same transaction
+              if (!datasetId && txDetails.effects?.mutated) {
+                console.log('Checking effects.mutated:', JSON.stringify(txDetails.effects.mutated, null, 2));
+                
+                for (const mutatedRef of txDetails.effects.mutated) {
+                  try {
+                    const objectId = (mutatedRef as any).reference?.objectId || (mutatedRef as any).objectId;
+                    if (!objectId) continue;
+                    
+                    // Skip marketplace and coin objects we already saw
+                    if (objectId === CHAIN_CONFIG.marketplaceId) continue;
+                    
+                    console.log('Fetching mutated object to check type:', objectId);
+                    const obj = await suiClient.getObject({
+                      id: objectId,
+                      options: { showType: true, showContent: false },
+                    });
+                    
+                    const objectType = obj.data?.type;
+                    console.log('Mutated object type:', objectType);
+                    
+                    if (objectType &&
+                        (objectType.includes('::marketplace::AudioSubmission') ||
+                         objectType.includes('::marketplace::DatasetSubmission'))) {
+                      datasetId = objectId;
+                      console.log('Found dataset ID from effects.mutated:', datasetId);
+                      break;
+                    }
+                  } catch (err) {
+                    console.warn('Failed to fetch mutated object:', err);
+                    // Continue to next object
+                  }
+                }
               }
 
               if (!datasetId) {

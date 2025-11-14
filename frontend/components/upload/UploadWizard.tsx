@@ -49,6 +49,8 @@ const INITIAL_STATE: UploadWizardState = {
   error: null,
 };
 
+const STORAGE_KEY = 'sonar-upload-wizard-state';
+
 /**
  * UploadWizard Component
  * Multi-step wizard for dataset upload with Walrus & Sui integration
@@ -82,41 +84,89 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
     };
   };
 
+  const clearStoredWizardState = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.error('Failed to clear wizard state:', e);
+    }
+  };
+
+  const resetWizardState = () => {
+    setState(() => ({ ...INITIAL_STATE }));
+  };
+
+  const closeWizard = (options?: { clearDraft?: boolean }) => {
+    onOpenChange(false);
+    if (options?.clearDraft) {
+      clearStoredWizardState();
+      resetWizardState();
+    }
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      closeWizard({ clearDraft: state.step === 'success' });
+    } else {
+      onOpenChange(true);
+    }
+  };
+
+  const handleDiscardDraft = () => {
+    if (state.step === 'success') {
+      handleDialogOpenChange(false);
+      return;
+    }
+
+    const confirmed = typeof window === 'undefined' ? true : window.confirm('Discard current draft? This cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    clearStoredWizardState();
+    resetWizardState();
+  };
+
   // Persist wizard state to localStorage for recovery
   useEffect(() => {
-    if (open) {
-      const savedState = localStorage.getItem('sonar-upload-wizard-state');
-      if (savedState) {
-        try {
-          const parsed = JSON.parse(savedState);
-          // Only restore if we're not on success step
-          // Note: We can't restore full file data, user will need to re-upload
-          if (parsed.step !== 'success' && parsed.step !== 'encryption') {
-            setState((prev) => ({
-              ...prev,
-              ...parsed,
-              audioFiles: Array.isArray(parsed.audioFiles) ? parsed.audioFiles : [],
-            }));
-          }
-        } catch (e) {
-          console.error('Failed to restore wizard state:', e);
-          localStorage.removeItem('sonar-upload-wizard-state');
+    if (!open || typeof window === 'undefined') {
+      return;
+    }
+
+    const savedState = localStorage.getItem(STORAGE_KEY);
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        // Only restore if we're not on success step
+        // Note: We can't restore full file data, user will need to re-upload
+        if (parsed.step !== 'success' && parsed.step !== 'encryption') {
+          setState((prev) => ({
+            ...prev,
+            ...parsed,
+            audioFiles: Array.isArray(parsed.audioFiles) ? parsed.audioFiles : [],
+          }));
         }
+      } catch (e) {
+        console.error('Failed to restore wizard state:', e);
+        localStorage.removeItem(STORAGE_KEY);
       }
     }
   }, [open]);
 
   useEffect(() => {
-    if (open && state.step !== 'success') {
-      try {
-        const serialized = serializeState(state);
-        localStorage.setItem('sonar-upload-wizard-state', JSON.stringify(serialized));
-      } catch (e) {
-        console.error('Failed to save wizard state:', e);
-        // If still quota exceeded, clear localStorage
-        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-          localStorage.removeItem('sonar-upload-wizard-state');
-        }
+    if (!open || state.step === 'success' || typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const serialized = serializeState(state);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
+    } catch (e) {
+      console.error('Failed to save wizard state:', e);
+      // If still quota exceeded, clear localStorage
+      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+        localStorage.removeItem(STORAGE_KEY);
       }
     }
   }, [state, open]);
@@ -138,24 +188,8 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
     }
   };
 
-  const handleClose = () => {
-    // Only allow closing if not in critical steps
-    if (
-      state.step === 'file-upload' ||
-      state.step === 'metadata' ||
-      state.step === 'success'
-    ) {
-      onOpenChange(false);
-      // Clear state after closing success step
-      if (state.step === 'success') {
-        localStorage.removeItem('sonar-upload-wizard-state');
-        setState(() => ({ ...INITIAL_STATE }));
-      }
-    }
-  };
-
   return (
-    <Dialog.Root open={open} onOpenChange={handleClose}>
+    <Dialog.Root open={open} onOpenChange={handleDialogOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-sonar-abyss/90 backdrop-blur-sm z-50" />
         <Dialog.Content
@@ -176,22 +210,35 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
                 Step {currentStepIndex + 1} of {STEPS.length}
               </Dialog.Description>
             </div>
-            {(state.step === 'file-upload' ||
-              state.step === 'metadata' ||
-              state.step === 'success') && (
+            <div className="flex items-center gap-3">
+              {state.step !== 'success' && (
+                <button
+                  type="button"
+                  onClick={handleDiscardDraft}
+                  className={cn(
+                    'text-xs uppercase tracking-wide font-mono',
+                    'text-sonar-coral hover:text-sonar-coral/80',
+                    'border border-sonar-coral/40 rounded-sonar px-3 py-1.5',
+                    'transition-colors focus:outline-none focus:ring-2 focus:ring-sonar-coral/60'
+                  )}
+                >
+                  Discard Draft
+                </button>
+              )}
               <Dialog.Close asChild>
                 <button
+                  type="button"
                   className={cn(
                     'text-sonar-highlight hover:text-sonar-signal',
                     'transition-colors p-2 rounded-sonar',
                     'focus:outline-none focus:ring-2 focus:ring-sonar-signal'
                   )}
-                  aria-label="Close"
+                  aria-label="Close upload wizard"
                 >
                   <X className="w-6 h-6" />
                 </button>
               </Dialog.Close>
-            )}
+            </div>
           </div>
 
           {/* Progress Bar */}
@@ -304,7 +351,7 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
                 <SuccessStep
                   publish={state.publish!}
                   metadata={state.metadata!}
-                  onClose={handleClose}
+                  onClose={() => closeWizard({ clearDraft: true })}
                 />
               )}
             </motion.div>
