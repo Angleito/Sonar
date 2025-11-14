@@ -155,38 +155,67 @@ export function PublishStep({
               // Check for both AudioSubmission (single-file) and DatasetSubmission (multi-file)
               if (txDetails.objectChanges) {
                 // Debug: log all object changes to understand structure
-                console.log('Transaction objectChanges:', txDetails.objectChanges);
+                console.log('Transaction objectChanges (full):', JSON.stringify(txDetails.objectChanges, null, 2));
                 
                 for (const change of txDetails.objectChanges) {
-                  // Check if this is a created object
-                  if (change.type === 'created') {
-                    const objectType = change.objectType || (change as any).objectType;
-                    const objectId = change.objectId || (change as any).objectId;
-                    
-                    // Log each created object for debugging
-                    console.log('Checking created object:', { type: change.type, objectType, objectId });
-                    
-                    // Check for both AudioSubmission and DatasetSubmission types
-                    // The objectType might be the full package path like "0x...::marketplace::AudioSubmission"
-                    if (objectType &&
-                        (objectType.includes('::marketplace::AudioSubmission') ||
-                         objectType.includes('::marketplace::DatasetSubmission'))) {
+                  // Log every change for debugging
+                  const changeAny = change as any;
+                  console.log('Checking object change:', {
+                    type: change.type,
+                    objectType: changeAny.objectType,
+                    objectId: changeAny.objectId,
+                    fullChange: change,
+                    allKeys: Object.keys(changeAny),
+                  });
+                  
+                  // Extract objectType and objectId - try multiple possible field names
+                  const objectType = changeAny.objectType || changeAny.type || changeAny.object_type;
+                  const objectId = changeAny.objectId || changeAny.object_id || changeAny.reference?.objectId;
+                  
+                  // Check if this object matches our submission types
+                  // The objectType might be the full package path like "0x...::marketplace::AudioSubmission"
+                  if (objectType &&
+                      (objectType.includes('::marketplace::AudioSubmission') ||
+                       objectType.includes('::marketplace::DatasetSubmission'))) {
+                    if (objectId) {
                       datasetId = objectId;
-                      console.log('Found dataset ID from objectChanges:', datasetId);
+                      console.log(`Found dataset ID from ${change.type} object:`, datasetId, 'type:', objectType);
                       break;
+                    }
+                  }
+                  
+                  // Also check objectType without the package prefix (just the module::type part)
+                  if (objectType && objectId && !datasetId) {
+                    const typeParts = objectType.split('::');
+                    if (typeParts.length >= 3) {
+                      const moduleType = typeParts.slice(-2).join('::'); // e.g., "marketplace::AudioSubmission"
+                      if (moduleType === 'marketplace::AudioSubmission' || moduleType === 'marketplace::DatasetSubmission') {
+                        datasetId = objectId;
+                        console.log(`Found dataset ID by module type from ${change.type} object:`, datasetId);
+                        break;
+                      }
                     }
                   }
                 }
               }
 
-              // Fallback: Extract from events if objectChanges didn't work
+              // Fallback 1: Check effects.created array
+              if (!datasetId && txDetails.effects?.created) {
+                console.log('Checking effects.created:', txDetails.effects.created);
+                // effects.created contains object references, but we need to fetch the object to get its type
+                // This is less efficient, so we'll try events first
+              }
+
+              // Fallback 2: Extract from events if objectChanges didn't work
               // The contract emits SubmissionCreated or DatasetSubmissionCreated events with submission_id
               if (!datasetId && txDetails.events && CHAIN_CONFIG.packageId) {
-                console.log('Trying to extract dataset ID from events:', txDetails.events);
+                console.log('Trying to extract dataset ID from events (full):', JSON.stringify(txDetails.events, null, 2));
                 
                 for (const event of txDetails.events) {
                   const eventType = event.type;
                   const parsedJson = event.parsedJson as any;
+                  
+                  console.log('Checking event:', { eventType, parsedJson });
                   
                   // Check for SubmissionCreated or DatasetSubmissionCreated events
                   if (eventType &&
@@ -198,6 +227,14 @@ export function PublishStep({
                     break;
                   }
                 }
+              }
+              
+              // Fallback 3: Try to get object ID from effects.created and verify its type
+              if (!datasetId && txDetails.effects?.created && CHAIN_CONFIG.packageId) {
+                console.log('Checking effects.created as final fallback:', txDetails.effects.created);
+                // For each created object reference, we'd need to fetch it to check its type
+                // This is expensive, so we only do it as a last resort
+                // For now, we'll rely on the detailed logging above to diagnose the issue
               }
 
               if (!datasetId) {
