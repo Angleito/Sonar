@@ -18,7 +18,7 @@ from typing import Dict, Any, Optional, List
 
 from audio_checker import AudioQualityChecker
 from fingerprint import CopyrightDetector
-from sui_client import SuiVerificationClient
+from session_store import SessionStore
 from verification_pipeline import VerificationPipeline
 from seal_decryptor import decrypt_encrypted_blob
 
@@ -42,12 +42,9 @@ VERIFIER_AUTH_TOKEN = os.getenv("VERIFIER_AUTH_TOKEN")
 MAX_FILE_SIZE_GB = int(os.getenv("MAX_FILE_SIZE_GB", "13"))
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_GB * 1024**3
 
-# Sui blockchain configuration
-SUI_NETWORK = os.getenv("SUI_NETWORK", "testnet")
-SUI_VALIDATOR_KEY = os.getenv("SUI_VALIDATOR_KEY")
-SUI_PACKAGE_ID = os.getenv("SUI_PACKAGE_ID")
-SUI_SESSION_REGISTRY_ID = os.getenv("SUI_SESSION_REGISTRY_ID")
-SUI_VALIDATOR_CAP_ID = os.getenv("SUI_VALIDATOR_CAP_ID")
+# Vercel KV configuration (for session storage)
+KV_REST_API_URL = os.getenv("KV_REST_API_URL")
+KV_REST_API_TOKEN = os.getenv("KV_REST_API_TOKEN")
 
 # OpenRouter API configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -83,11 +80,8 @@ if not ACOUSTID_API_KEY:
 if not VERIFIER_AUTH_TOKEN:
     raise RuntimeError("VERIFIER_AUTH_TOKEN must be set for authenticated access")
 
-if not all([SUI_VALIDATOR_KEY, SUI_PACKAGE_ID, SUI_SESSION_REGISTRY_ID, SUI_VALIDATOR_CAP_ID]):
-    raise RuntimeError(
-        "Sui blockchain configuration missing; set SUI_VALIDATOR_KEY, "
-        "SUI_PACKAGE_ID, SUI_SESSION_REGISTRY_ID, and SUI_VALIDATOR_CAP_ID"
-    )
+if not KV_REST_API_URL or not KV_REST_API_TOKEN:
+    raise RuntimeError("KV_REST_API_URL and KV_REST_API_TOKEN must be set for session storage")
 
 # Validate Seal configuration (required for encrypted blob flow)
 if not SEAL_PACKAGE_ID:
@@ -113,30 +107,19 @@ app.add_middleware(
 )
 
 # Initialize clients (lazy initialization to avoid startup errors)
-_sui_client: Optional[SuiVerificationClient] = None
+_session_store: Optional[SessionStore] = None
 _verification_pipeline: Optional[VerificationPipeline] = None
 _quality_checker = AudioQualityChecker()
 _copyright_detector = CopyrightDetector(ACOUSTID_API_KEY)
 
 
-def get_sui_client() -> SuiVerificationClient:
-    """Get or create Sui blockchain client instance."""
-    global _sui_client
-    if _sui_client is None:
-        if not all([SUI_VALIDATOR_KEY, SUI_PACKAGE_ID, SUI_SESSION_REGISTRY_ID, SUI_VALIDATOR_CAP_ID]):
-            raise HTTPException(
-                status_code=500,
-                detail="Sui blockchain not configured (SUI_VALIDATOR_KEY, SUI_PACKAGE_ID, SUI_SESSION_REGISTRY_ID, SUI_VALIDATOR_CAP_ID required)"
-            )
-        _sui_client = SuiVerificationClient(
-            network=SUI_NETWORK,
-            validator_keystring=SUI_VALIDATOR_KEY,
-            package_id=SUI_PACKAGE_ID,
-            session_registry_id=SUI_SESSION_REGISTRY_ID,
-            validator_cap_id=SUI_VALIDATOR_CAP_ID
-        )
-        logger.info(f"Initialized Sui client for {SUI_NETWORK} network")
-    return _sui_client
+def get_session_store() -> SessionStore:
+    """Get or create session store instance."""
+    global _session_store
+    if _session_store is None:
+        _session_store = SessionStore()
+        logger.info("Initialized Vercel KV session store")
+    return _session_store
 
 
 def get_verification_pipeline() -> VerificationPipeline:
@@ -148,13 +131,13 @@ def get_verification_pipeline() -> VerificationPipeline:
                 status_code=500,
                 detail="OpenRouter API not configured (OPENROUTER_API_KEY required)"
             )
-        sui_client = get_sui_client()
+        session_store = get_session_store()
         _verification_pipeline = VerificationPipeline(
-            sui_client,
+            session_store,
             OPENROUTER_API_KEY,
             ACOUSTID_API_KEY
         )
-        logger.info("Initialized verification pipeline with Sui blockchain backend")
+        logger.info("Initialized verification pipeline with Vercel KV backend")
     return _verification_pipeline
 
 
@@ -273,7 +256,7 @@ async def root():
 async def health():
     """Health check endpoint"""
     config_status = {
-        "sui_configured": True,
+        "kv_configured": bool(KV_REST_API_URL and KV_REST_API_TOKEN),
         "openrouter_configured": bool(OPENROUTER_API_KEY),
         "acoustid_configured": bool(ACOUSTID_API_KEY),
         "walrus_upload_configured": bool(WALRUS_UPLOAD_URL),  # Legacy
@@ -310,7 +293,7 @@ async def create_verification(
        - metadata: JSON string with dataset metadata
 
     Returns:
-    - sessionObjectId: On-chain verification session ID for polling
+    - sessionObjectId: Verification session ID (UUID) for polling
     - estimatedTimeSeconds: Estimated completion time
     """
     temp_file_path = None
@@ -390,24 +373,16 @@ async def create_verification(
                 logger.warning(f"Failed to extract audio duration: {e}")
                 duration_seconds = 0
 
-            # Create on-chain verification session with encrypted CID
-            sui_client = get_sui_client()
-            session_object_id = await sui_client.create_session(verification_id, {
+            # Create verification session in Vercel KV
+            session_store = get_session_store()
+            session_object_id = await session_store.create_session(verification_id, {
                 "encrypted_cid": encrypted_request.walrusBlobId,  # Store encrypted blob ID
                 "plaintext_size_bytes": file_size,
                 "duration_seconds": int(duration_seconds),
                 "file_format": "audio/wav"  # Default, will be detected during verification
             })
 
-            if not session_object_id:
-                if temp_file_path and os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to create on-chain verification session"
-                )
-
-            logger.info(f"Created on-chain session: {session_object_id}")
+            logger.info(f"Created session: {session_object_id}")
 
             # Start background verification pipeline in thread pool to avoid blocking event loop
             pipeline = get_verification_pipeline()
@@ -507,23 +482,16 @@ async def create_verification(
                 }
             )
 
-            # Create on-chain verification session
-            sui_client = get_sui_client()
-            session_object_id = await sui_client.create_session(verification_id, {
+            # Create verification session in Vercel KV
+            session_store = get_session_store()
+            session_object_id = await session_store.create_session(verification_id, {
                 "plaintext_cid": plaintext_cid,
                 "plaintext_size_bytes": file_size,
                 "duration_seconds": int(duration_seconds),
                 "file_format": file.content_type or "audio/wav"
             })
 
-            if not session_object_id:
-                os.unlink(temp_file_path)
-                raise HTTPException(
-                    status_code=500,
-                    detail="Failed to create on-chain verification session"
-                )
-
-            logger.info(f"Created on-chain session: {session_object_id}")
+            logger.info(f"Created session: {session_object_id}")
 
             # Start background verification pipeline in thread pool
             pipeline = get_verification_pipeline()
@@ -594,22 +562,22 @@ def _run_pipeline_sync(
 @app.get("/verify/{session_object_id}", dependencies=[Depends(verify_bearer_token)])
 async def get_verification_status(session_object_id: str):
     """
-    Get verification status from blockchain.
+    Get verification status from Vercel KV.
 
-    Returns VerificationSession data from on-chain object.
+    Returns verification session data.
 
     Args:
-        session_object_id: On-chain VerificationSession object ID
+        session_object_id: Verification session ID (UUID)
 
     Returns:
         Session data with state and stage information
     """
     try:
-        sui_client = get_sui_client()
-        session = await sui_client.get_session(session_object_id)
+        session_store = get_session_store()
+        session = await session_store.get_session(session_object_id)
 
         if not session:
-            raise HTTPException(status_code=404, detail="Session not found on blockchain")
+            raise HTTPException(status_code=404, detail="Session not found")
 
         return JSONResponse(content=session)
 
@@ -629,17 +597,17 @@ async def cancel_verification(session_object_id: str):
     Cancel a running verification.
 
     Note: Due to BackgroundTasks limitations, this only marks the session
-    as failed on blockchain. The pipeline may continue running until it checks
+    as cancelled in KV. The pipeline may continue running until it checks
     the session state.
     """
     try:
-        sui_client = get_sui_client()
-        session = await sui_client.get_session(session_object_id)
+        session_store = get_session_store()
+        session = await session_store.get_session(session_object_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
 
-        # Mark as failed on blockchain (cancelled)
-        await sui_client.mark_failed(session_object_id, {
+        # Mark as cancelled in KV
+        await session_store.mark_failed(session_object_id, {
             "errors": ["Verification cancelled by user"],
             "cancelled": True
         })

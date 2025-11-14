@@ -24,9 +24,6 @@ dependencies = [
     # AI transcription & analysis (via OpenRouter)
     "openai>=1.0.0",
 
-    # Sui blockchain integration
-    "pysui>=0.93.0",
-
     # Cryptography for AES decryption
     "cryptography>=41.0.0",
 ]

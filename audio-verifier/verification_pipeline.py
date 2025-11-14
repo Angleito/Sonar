@@ -21,7 +21,7 @@ from openai import OpenAI
 
 from audio_checker import AudioQualityChecker
 from fingerprint import CopyrightDetector
-from sui_client import SuiVerificationClient
+from session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,12 @@ class VerificationPipeline:
     Orchestrates the full verification pipeline for audio datasets.
 
     Manages temp files and ensures cleanup even on failures.
-    All verification state is recorded on Sui blockchain.
+    All verification state is recorded in Vercel KV.
     """
 
     def __init__(
         self,
-        sui_client: SuiVerificationClient,
+        session_store: SessionStore,
         openrouter_api_key: str,
         acoustid_api_key: Optional[str] = None,
     ):
@@ -50,11 +50,11 @@ class VerificationPipeline:
         Initialize the verification pipeline.
 
         Args:
-            sui_client: Sui blockchain client for session state
+            session_store: Session store for session state (Vercel KV)
             openrouter_api_key: OpenRouter API key for transcription and analysis
             acoustid_api_key: AcoustID API key for copyright detection
         """
-        self.sui = sui_client
+        self.session_store = session_store
 
         # Initialize OpenRouter client (OpenAI-compatible API)
         self.openai_client = OpenAI(
@@ -119,7 +119,7 @@ class VerificationPipeline:
         The temp file is automatically cleaned up after processing.
 
         Args:
-            session_object_id: On-chain VerificationSession object ID
+            session_object_id: Verification session ID (UUID)
             audio_file_path: Path to temporary audio file on disk
             metadata: Dataset metadata (title, description, etc.)
         """
@@ -131,12 +131,12 @@ class VerificationPipeline:
 
         except Exception as e:
             logger.error(f"[{session_object_id[:8]}...] Pipeline failed: {e}", exc_info=True)
-            success = await self.sui.mark_failed(session_object_id, {
+            success = await self.session_store.mark_failed(session_object_id, {
                 "errors": [f"Pipeline error: {str(e)}"],
                 "stage_failed": "system"
             })
             if not success:
-                logger.error(f"Failed to mark session {session_object_id[:8]}... as failed on blockchain")
+                logger.error(f"Failed to mark session {session_object_id[:8]}... as failed")
         finally:
             # Always clean up temp file
             try:
@@ -156,7 +156,7 @@ class VerificationPipeline:
         Run the complete six-stage verification pipeline.
 
         Args:
-            session_object_id: On-chain VerificationSession object ID
+            session_object_id: Verification session ID (UUID)
             audio_file_path: Path to audio file on disk (avoids loading 13GB into RAM)
             metadata: Dataset metadata (title, description, etc.)
         """
@@ -173,13 +173,13 @@ class VerificationPipeline:
             # Fail fast if quality check fails
             if not quality_result.get("quality", {}).get("passed", False):
                 logger.warning(f"[{session_object_id}] Failed quality check")
-                success = await self.sui.mark_failed(session_object_id, {
+                success = await self.session_store.mark_failed(session_object_id, {
                     "quality": quality_result.get("quality"),
                     "errors": quality_result.get("errors", []),
                     "stage_failed": "quality"
                 })
                 if not success:
-                    logger.error(f"Failed to mark session as failed on blockchain")
+                    logger.error(f"Failed to mark session as failed")
                 return
 
             # Stage 2: Copyright Check
@@ -227,10 +227,10 @@ class VerificationPipeline:
                 "analysis": analysis_result,
                 "safetyPassed": analysis_result.get("safetyPassed", False)
             }
-            completed = await self.sui.mark_completed(session_object_id, completion_payload)
+            completed = await self.session_store.mark_completed(session_object_id, completion_payload)
 
             if not completed:
-                raise RuntimeError("Failed to finalize verification on-chain")
+                raise RuntimeError("Failed to finalize verification")
 
             logger.info(
                 f"[{session_object_id}] Pipeline completed approved={approved}"
@@ -238,12 +238,12 @@ class VerificationPipeline:
 
         except Exception as e:
             logger.error(f"[{session_object_id}] Pipeline failed: {e}", exc_info=True)
-            success = await self.sui.mark_failed(session_object_id, {
+            success = await self.session_store.mark_failed(session_object_id, {
                 "errors": [f"Pipeline error: {str(e)}"],
                 "stage_failed": "system"
             })
             if not success:
-                logger.error(f"Failed to mark session as failed on blockchain")
+                logger.error(f"Failed to mark session as failed")
 
     async def _stage_quality_check(
         self,
@@ -581,11 +581,12 @@ Respond ONLY with the JSON object, no additional text."""
         progress: float
     ) -> None:
         """
-        Helper to update stage on-chain and raise if the transaction fails.
+        Helper to update stage in KV and raise if the update fails.
         """
-        success = await self.sui.update_stage(
+        success = await self.session_store.update_stage(
             session_object_id,
-            {"stage": stage_name, "progress": progress}
+            stage_name,
+            progress
         )
         if not success:
             raise RuntimeError(f"Failed to update stage '{stage_name}' for session {session_object_id[:8]}...")
