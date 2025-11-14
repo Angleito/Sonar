@@ -19,22 +19,29 @@ RUN mkdir -p /etc/nix && \
 
 WORKDIR /build
 
-# Install Rust/Cargo, git, and gcc (for C linker) for building seal-cli
+# Install Rust/Cargo, git, gcc, and OpenSSL for building seal-cli
 # Remove git-minimal first to avoid conflicts, then install full git
-# Install both openssl outputs so headers and libs are available
 RUN nix-env -e git-minimal 2>/dev/null || true && \
     nix-env -iA nixpkgs.rustc nixpkgs.cargo nixpkgs.git nixpkgs.gcc nixpkgs.pkg-config nixpkgs.openssl nixpkgs.openssl.dev nixpkgs.zlib
 
-# Configure OpenSSL environment for Rust builds (openssl-sys)
-ENV OPENSSL_DIR=/root/.nix-profile \
-    OPENSSL_LIB_DIR=/root/.nix-profile/lib \
-    OPENSSL_INCLUDE_DIR=/root/.nix-profile/include \
-    PKG_CONFIG_PATH=/root/.nix-profile/lib/pkgconfig
-
-# Clone seal repository and build seal-cli
-RUN git clone https://github.com/MystenLabs/seal.git seal && \
-    cd seal && \
+# Clone seal repository and build seal-cli (configure OpenSSL paths dynamically)
+RUN set -eux; \
+    git clone https://github.com/MystenLabs/seal.git seal; \
+    cd seal; \
     git checkout main && \
+    OPENSSL_LIB_SO=$(find /root/.nix-profile -name "libssl.so*" -print -quit); \
+    test -n "$OPENSSL_LIB_SO"; \
+    OPENSSL_LIB_SO=$(readlink -f "$OPENSSL_LIB_SO"); \
+    OPENSSL_LIB_DIR=$(dirname "$OPENSSL_LIB_SO"); \
+    OPENSSL_DIR=$(dirname "$OPENSSL_LIB_DIR"); \
+    OPENSSL_INCLUDE_HEADER=$(find /root/.nix-profile -path "*/include/openssl/ssl.h" -print -quit); \
+    test -n "$OPENSSL_INCLUDE_HEADER"; \
+    OPENSSL_INCLUDE_DIR=$(dirname "$(dirname "$(readlink -f "$OPENSSL_INCLUDE_HEADER")")"); \
+    OPENSSL_PKGCONFIG=$(find /root/.nix-profile -path "*/pkgconfig/openssl.pc" -print -quit); \
+    test -n "$OPENSSL_PKGCONFIG"; \
+    PKG_CONFIG_DIR=$(dirname "$(readlink -f "$OPENSSL_PKGCONFIG")"); \
+    export OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR; \
+    export PKG_CONFIG_PATH="${PKG_CONFIG_DIR}:${PKG_CONFIG_PATH:-}"; \
     export CARGO_NET_GIT_FETCH_WITH_CLI=true && \
     cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true
 
