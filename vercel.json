@@ -1,8 +1,8 @@
 {
   "framework": "nextjs",
-  "installCommand": "bun install",
-  "buildCommand": "bun run build:frontend",
-  "devCommand": "bun run dev:frontend",
-  "outputDirectory": "frontend/.next",
-  "ignoreCommand": "if git rev-parse --verify HEAD^ >/dev/null 2>&1; then git diff HEAD^ HEAD --name-only | grep -qE '^(frontend/|packages/(seal|shared)/|package\\.json|tsconfig\\.base\\.json|bun\\.lock|vercel\\.json)' && exit 1 || exit 0; else exit 1; fi"
+  "rootDirectory": "frontend",
+  "installCommand": "cd .. && bun install",
+  "buildCommand": "cd .. && bun run build:frontend",
+  "devCommand": "cd .. && bun run dev:frontend",
+  "ignoreCommand": "cd .. && if git rev-parse --verify HEAD^ >/dev/null 2>&1; then git diff HEAD^ HEAD --name-only | grep -qE '^(frontend/|packages/(seal|shared)/|package\\.json|tsconfig\\.base\\.json|bun\\.lock|vercel\\.json)' && exit 1 || exit 0; else exit 1; fi"
 }
