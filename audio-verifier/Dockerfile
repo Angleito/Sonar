@@ -32,6 +32,7 @@ RUN set -eux; \
     OPENSSL_DEV=$(nix eval --impure --raw --expr 'let pkgs = import <nixpkgs> {}; in pkgs.openssl.dev.outPath'); \
     export PKG_CONFIG_PATH="$OPENSSL_DEV/lib/pkgconfig:${PKG_CONFIG_PATH:-}"; \
     export OPENSSL_NO_VENDOR=1; \
+    export RUSTC_BOOTSTRAP=1; \
     export CARGO_NET_GIT_FETCH_WITH_CLI=true; \
     cargo build --bin seal-cli --release --config net.git-fetch-with-cli=true
 
