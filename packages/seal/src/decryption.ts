@@ -50,6 +50,7 @@ export async function decryptFile(
 
   // Build policy approval transaction
   const tx = new Transaction();
+  tx.setSender(sessionKey.getAddress());
   const target = `${packageId}::${policyModule}::seal_approve`;
 
   tx.moveCall({
@@ -316,6 +317,7 @@ export async function batchDecrypt(
 
     // Build batch transaction
     const tx = new Transaction();
+    tx.setSender(sessionKey.getAddress());
     batch.forEach((item) => {
       tx.moveCall({
         target: `${packageId}::${policyModule}::seal_approve`,

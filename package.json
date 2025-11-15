@@ -24,6 +24,7 @@
     "download-audio": "bun scripts/download-audio-samples.ts"
   },
   "devDependencies": {
+    "@rollup/rollup-darwin-x64": "^4.53.2",
     "eslint": "^9.38.0",
     "globals": "^15.8.0",
     "next": "^16.0.1",
