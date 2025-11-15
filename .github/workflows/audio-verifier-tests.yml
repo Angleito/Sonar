@@ -1,0 +1,144 @@
+name: Audio Verifier Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'audio-verifier/**'
+      - '.github/workflows/audio-verifier-tests.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'audio-verifier/**'
+      - '.github/workflows/audio-verifier-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ["3.13"]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libchromaprint-dev
+      
+      - name: Install Python dependencies
+        working-directory: audio-verifier
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      
+      - name: Run unit tests with coverage
+        working-directory: audio-verifier
+        run: |
+          pytest tests/unit/ \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --timeout=60 \
+            -v
+      
+      - name: Run property-based tests
+        working-directory: audio-verifier
+        run: |
+          pytest tests/property/ \
+            --timeout=120 \
+            --hypothesis-profile=ci \
+            -v
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./audio-verifier/coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+      
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: pytest-results
+          path: audio-verifier/.pytest_cache
+          retention-days: 7
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+      
+      - name: Install dependencies
+        working-directory: audio-verifier
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          pip install pylint mypy
+      
+      - name: Run pylint
+        working-directory: audio-verifier
+        continue-on-error: true
+        run: |
+          pylint --disable=all --enable=E,F *.py || true
+      
+      - name: Run type checking
+        working-directory: audio-verifier
+        continue-on-error: true
+        run: |
+          mypy . --ignore-missing-imports || true
+
+  performance:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libchromaprint-dev
+      
+      - name: Install dependencies
+        working-directory: audio-verifier
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      
+      - name: Run tests with timeout detection
+        working-directory: audio-verifier
+        run: |
+          pytest tests/unit/test_seal_decryptor.py::TestTimeoutScenarios \
+            --timeout=30 \
+            -v \
+            --tb=short
+      
+      - name: Check test execution time
+        working-directory: audio-verifier
+        run: |
+          pytest \
+            --timeout=600 \
+            --durations=10 \
+            -v \
+            tests/
+        continue-on-error: true
