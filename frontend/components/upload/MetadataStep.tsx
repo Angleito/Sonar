@@ -270,8 +270,10 @@ export function MetadataStep({
   const updateSpeakerCount = (count: number) => {
     const newSpeakers = [];
     for (let i = 0; i < count; i++) {
+      // Get existing speaker or create new one - handle both undefined and missing speakers
+      const existingSpeaker = speakers && Array.isArray(speakers) ? speakers[i] : null;
       newSpeakers.push(
-        speakers?.[i] || { id: String(i + 1), role: '', ageRange: '', gender: '', accent: '' }
+        existingSpeaker || { id: String(i + 1), role: '', ageRange: '', gender: '', accent: '' }
       );
     }
     setValue('speakers.speakerCount', count);
@@ -432,7 +434,7 @@ export function MetadataStep({
           Provide individual title and description for each audio file
         </p>
         <div className="space-y-3">
-          {audioFiles.map((file, index) => (
+          {audioFiles && Array.isArray(audioFiles) && audioFiles.length > 0 && audioFiles.map((file, index) => (
             <div key={file.id} className="space-y-2 p-3 bg-sonar-abyss/30 rounded-sonar border border-sonar-blue/20">
               <p className="text-xs font-mono text-sonar-signal font-semibold">
                 {file.file.name}
@@ -631,7 +633,7 @@ export function MetadataStep({
           </div>
 
           <div className="space-y-2">
-            {speakers && speakers.map((speaker, idx) => (
+            {speakers && Array.isArray(speakers) && speakers.length > 0 && speakers.map((speaker, idx) => (
               <div key={speaker.id} className="p-3 bg-sonar-abyss/30 rounded-sonar border border-sonar-blue/20 space-y-2">
                 <p className="text-xs font-mono text-sonar-signal font-semibold">Speaker {idx + 1}</p>
                 <input

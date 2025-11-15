@@ -181,6 +181,18 @@ export function UploadWizard({ open, onOpenChange }: UploadWizardProps) {
         // Only restore if we're not on success step
         // Note: We can't restore full file data, user will need to re-upload
         if (parsed.step !== 'success' && parsed.step !== 'encryption') {
+          // Validate metadata structure - clean up invalid optional fields
+          if (parsed.metadata) {
+            // Ensure speakers is either undefined or has proper structure
+            if (parsed.metadata.speakers !== undefined && !parsed.metadata.speakers?.speakers) {
+              parsed.metadata.speakers = undefined;
+            }
+            // Ensure audioQuality is either undefined or has proper structure
+            if (parsed.metadata.audioQuality !== undefined && !parsed.metadata.audioQuality?.codec) {
+              parsed.metadata.audioQuality = undefined;
+            }
+          }
+
           setState((prev) => ({
             ...prev,
             ...parsed,
