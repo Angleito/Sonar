@@ -75,6 +75,7 @@ export interface WalrusUploadResult {
 
 export interface VerificationStage {
   name:
+    | 'decryption'
     | 'quality'
     | 'copyright'
     | 'transcription'
