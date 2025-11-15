@@ -297,7 +297,7 @@ export function VerificationStep({
       const walrusAggregator =
         process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL ||
         'https://aggregator.walrus-testnet.walrus.space';
-      const blobResponse = await fetch(`${walrusAggregator}/v1/${walrusBlobId}`);
+      const blobResponse = await fetch(`${walrusAggregator}/v1/blobs/${walrusBlobId}`);
 
       if (!blobResponse.ok) {
         throw new Error(
