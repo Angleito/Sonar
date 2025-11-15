@@ -53,13 +53,14 @@ export function VerificationStep({
 }: VerificationStepProps) {
   // Hooks for wallet interaction
   const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
-  const { createSession, sessionKey } = useSeal();
+  const { createSession, sessionKey, decrypt } = useSeal();
 
   // State
   const [verificationState, setVerificationState] = useState<'idle' | 'waiting-auth' | 'running' | 'completed' | 'failed'>('idle');
   const [verificationId, setVerificationId] = useState<string | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [stages, setStages] = useState<StageInfo[]>([
+    { name: 'decryption', status: 'pending', progress: 0 },
     { name: 'quality', status: 'pending', progress: 0 },
     { name: 'copyright', status: 'pending', progress: 0 },
     { name: 'transcription', status: 'pending', progress: 0 },
@@ -211,6 +212,7 @@ export function VerificationStep({
         state: 'completed',
         currentStage: 'completed',
         stages: [
+          { name: 'decryption', status: 'completed', progress: 100 },
           { name: 'quality', status: 'completed', progress: 100 },
           { name: 'copyright', status: 'completed', progress: 100 },
           { name: 'transcription', status: 'completed', progress: 100 },
@@ -231,6 +233,7 @@ export function VerificationStep({
 
     // Reset stages for current file
     setStages([
+      { name: 'decryption', status: 'completed', progress: 100 }, // N/A for legacy file flow
       { name: 'quality', status: 'pending', progress: 0 },
       { name: 'copyright', status: 'pending', progress: 0 },
       { name: 'transcription', status: 'pending', progress: 0 },
@@ -276,43 +279,121 @@ export function VerificationStep({
     encryptedObjectBcsHex: string
   ) => {
     try {
-      // Prepare JSON payload with encrypted blob info
-      const payload = {
-        walrusBlobId,
+      if (!sessionKey) {
+        throw new Error('No active session. Please authorize verification first.');
+      }
+
+      console.log('[VerificationStep] Fetching encrypted blob from Walrus:', walrusBlobId);
+
+      // Stage 1: Fetch encrypted blob from Walrus
+      setStages((prev) =>
+        prev.map((stage) =>
+          stage.name === 'decryption'
+            ? { ...stage, status: 'in_progress', progress: 10 }
+            : stage
+        )
+      );
+
+      const walrusAggregator =
+        process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL ||
+        'https://aggregator.walrus-testnet.walrus.space';
+      const blobResponse = await fetch(`${walrusAggregator}/v1/${walrusBlobId}`);
+
+      if (!blobResponse.ok) {
+        throw new Error(
+          `Failed to fetch encrypted blob from Walrus: ${blobResponse.statusText}`
+        );
+      }
+
+      const encryptedArrayBuffer = await blobResponse.arrayBuffer();
+      const encryptedBlob = new Uint8Array(encryptedArrayBuffer);
+
+      console.log(
+        '[VerificationStep] Encrypted blob fetched, size:',
+        encryptedBlob.length,
+        'bytes'
+      );
+
+      // Stage 2: Decrypt using sessionKey
+      setStages((prev) =>
+        prev.map((stage) =>
+          stage.name === 'decryption'
+            ? { ...stage, status: 'in_progress', progress: 30 }
+            : stage
+        )
+      );
+
+      console.log('[VerificationStep] Decrypting blob with sessionKey...');
+
+      const decryptionResult = await decrypt(
+        encryptedBlob,
         sealIdentity,
-        encryptedObjectBcsHex,
-        metadata,
-      };
+        undefined, // Use default options
+        (progress) => {
+          // Update progress: progress is 0-1, map to 30-80% for decryption stage
+          const progressPercent = 30 + Math.floor(progress * 50);
+          setStages((prev) =>
+            prev.map((stage) =>
+              stage.name === 'decryption'
+                ? { ...stage, progress: progressPercent }
+                : stage
+            )
+          );
+        }
+      );
 
-      console.log('[VerificationStep] Sending encrypted blob verification request');
+      console.log(
+        '[VerificationStep] Blob decrypted successfully, size:',
+        decryptionResult.data.length,
+        'bytes'
+      );
 
-      // Call server-side API (proxies to audio-verifier with secure token)
+      // Mark decryption as complete
+      setStages((prev) =>
+        prev.map((stage) =>
+          stage.name === 'decryption'
+            ? { ...stage, status: 'completed', progress: 100 }
+            : stage
+        )
+      );
+
+      // Stage 3: Send decrypted audio to backend for verification
+      console.log('[VerificationStep] Sending decrypted audio to backend for verification');
+
+      const decryptedBlob = new Blob([decryptionResult.data], {
+        type: 'audio/mpeg',
+      });
+
+      const formData = new FormData();
+      formData.append('file', decryptedBlob, 'decrypted-audio.mp3');
+      formData.append('metadata', JSON.stringify(metadata));
+
       const response = await fetch('/api/verify', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: formData,
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(
+          errorData.detail ||
+            errorData.error ||
+            `HTTP ${response.status}: ${response.statusText}`
+        );
       }
 
       const data = await response.json();
-      const { sessionObjectId: id } = data;
+      const { verificationId: id } = data;
 
       setVerificationId(id);
 
       // Start polling for verification status
       startPollingEncrypted(id);
-
     } catch (error: any) {
-      console.error('Failed to start encrypted verification:', error);
-      setErrorMessage(error.message || 'Failed to start verification');
+      console.error('[VerificationStep] Failed to decrypt and verify:', error);
+      setErrorMessage(error.message || 'Failed to decrypt and verify audio');
       setVerificationState('failed');
-      onError(error.message || 'Verification failed to start');
+      onError(error.message || 'Decryption or verification failed');
     }
   };
 
@@ -365,6 +446,7 @@ export function VerificationStep({
             state: 'completed',
             currentStage: 'completed',
             stages: [
+              { name: 'decryption', status: 'completed', progress: 100 },
               { name: 'quality', status: 'completed', progress: 100 },
               { name: 'copyright', status: 'completed', progress: 100 },
               { name: 'transcription', status: 'completed', progress: 100 },
@@ -456,7 +538,7 @@ export function VerificationStep({
     const currentStage = session.stage;
     const progress = session.progress || 0;
 
-    const stageOrder = ['quality', 'copyright', 'transcription', 'analysis'];
+    const stageOrder = ['decryption', 'quality', 'copyright', 'transcription', 'analysis'];
     const currentIndex = stageOrder.indexOf(currentStage);
 
     setStages((prev) =>
@@ -473,6 +555,11 @@ export function VerificationStep({
   };
 
   const stageConfig = {
+    decryption: {
+      icon: <Shield className="w-5 h-5" />,
+      label: 'Decryption',
+      description: 'Decrypting audio using your session key',
+    },
     quality: {
       icon: <Music className="w-5 h-5" />,
       label: 'Quality Check',
