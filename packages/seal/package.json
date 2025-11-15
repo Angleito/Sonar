@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm",
-    "build:with-types": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "bash -c 'tsup src/index.ts --format cjs,esm || (echo \"tsup failed, falling back to esbuild...\" && esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --packages=external && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --packages=external && tsc --declaration --declarationMap --emitDeclarationOnly --outDir dist)'",
+    "build:with-types": "bash -c 'tsup src/index.ts --format cjs,esm --dts || (echo \"tsup failed, falling back to esbuild...\" && esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --packages=external && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --packages=external && tsc --declaration --declarationMap --emitDeclarationOnly --outDir dist)'",
     "dev": "tsup src/index.ts --format cjs,esm --watch",
     "test": "bun test",
     "type-check": "tsc --noEmit",
@@ -43,6 +43,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^20.10.6",
+    "esbuild": "^0.27.0",
     "tsup": "^8.0.1",
     "typescript": "^5.9.3"
   },
