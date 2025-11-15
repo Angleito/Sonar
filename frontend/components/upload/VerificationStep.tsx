@@ -122,8 +122,8 @@ export function VerificationStep({
       });
 
       // Export session key to send to backend
-      const exportedKey = (session as any).export?.() ?? session;
-      setSessionKeyData(typeof exportedKey === 'string' ? exportedKey : JSON.stringify(exportedKey));
+      const exportedKey = session.export();
+      setSessionKeyData(JSON.stringify(exportedKey));
 
       console.log('[VerificationStep] Session created and exported');
       setVerificationState('running');
