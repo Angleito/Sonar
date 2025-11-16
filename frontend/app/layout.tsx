@@ -3,7 +3,6 @@ import { IBM_Plex_Mono, Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { Navbar } from '@/components/layout/Navbar';
-import { InteractiveGrid } from '@/components/animations/InteractiveGrid';
 
 const ibmPlexMono = IBM_Plex_Mono({
   weight: ['400', '500', '600', '700'],
@@ -52,7 +51,6 @@ export default function RootLayout({
     <html lang="en" className={`${ibmPlexMono.variable} ${inter.variable}`}>
       <body>
         <Providers>
-          <InteractiveGrid opacity={0.2} />
           <Navbar />
           <div className="pt-18">{children}</div>
         </Providers>
