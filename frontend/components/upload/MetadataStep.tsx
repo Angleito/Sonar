@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion } from 'framer-motion';
 import { Info, Tag, Globe, FileText, ChevronDown, Plus, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { DatasetMetadata, AudioFile } from '@/lib/types/upload';
 import { SonarButton } from '@/components/ui/SonarButton';
@@ -204,10 +204,11 @@ export function MetadataStep({
   });
 
   // Initialize default values - handle undefined audioFiles
+  const isSingleFile = audioFiles && audioFiles.length === 1;
   const defaultPerFileMetadata = (audioFiles && Array.isArray(audioFiles) ? audioFiles : []).map((f) => ({
     fileId: f.id || '',
     title: f.file?.name?.replace(/\.[^.]+$/, '') || 'Untitled',
-    description: '',
+    description: isSingleFile ? 'A single audio file.' : '', // Default description for single files
   }));
 
   // Audio quality is optional - initialize only if user opens the section
@@ -247,6 +248,23 @@ export function MetadataStep({
   const consentChecked = watch('consent');
   const speakerCount = watch('speakers.speakerCount');
   const speakers = watch('speakers.speakers');
+  const watchedTitle = watch('title');
+  const watchedDescription = watch('description');
+  const perFileMetadata = watch('perFileMetadata');
+
+  // Auto-sync dataset metadata to per-file metadata for single-file uploads
+  useEffect(() => {
+    if (isSingleFile && perFileMetadata && perFileMetadata.length === 1) {
+      // Only update if the values have changed to avoid infinite loops
+      const currentPerFile = perFileMetadata[0];
+      if (currentPerFile.title !== watchedTitle && watchedTitle.length >= 3) {
+        setValue(`perFileMetadata.0.title`, watchedTitle, { shouldValidate: true });
+      }
+      if (currentPerFile.description !== watchedDescription && watchedDescription.length >= 10) {
+        setValue(`perFileMetadata.0.description`, watchedDescription, { shouldValidate: true });
+      }
+    }
+  }, [isSingleFile, watchedTitle, watchedDescription, perFileMetadata, setValue]);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({
@@ -448,9 +466,15 @@ export function MetadataStep({
         isExpanded={expandedSections.perFile}
         onToggle={() => toggleSection('perFile')}
       >
-        <p className="text-xs text-sonar-highlight/70 font-mono mb-3">
-          Provide individual title and description for each audio file
-        </p>
+        {isSingleFile ? (
+          <p className="text-xs text-sonar-highlight/70 font-mono mb-3">
+            Your per-file title and description are automatically synced with your dataset details above.
+          </p>
+        ) : (
+          <p className="text-xs text-sonar-highlight/70 font-mono mb-3">
+            Provide individual title and description for each audio file
+          </p>
+        )}
         <div className="space-y-3">
           {audioFiles && Array.isArray(audioFiles) && audioFiles.length > 0 && audioFiles.map((file, index) => (
             <div key={file.id} className="space-y-2 p-3 bg-sonar-abyss/30 rounded-sonar border border-sonar-blue/20">
@@ -461,11 +485,13 @@ export function MetadataStep({
                 type="text"
                 {...register(`perFileMetadata.${index}.title`)}
                 placeholder="File title"
+                readOnly={isSingleFile}
                 className={cn(
                   'w-full px-3 py-2 rounded-sonar text-sm',
                   'bg-sonar-abyss/50 border',
                   'text-sonar-highlight-bright font-mono',
                   'focus:outline-none focus:ring-2 focus:ring-sonar-signal',
+                  isSingleFile && 'cursor-not-allowed opacity-70',
                   errors.perFileMetadata?.[index]?.title
                     ? 'border-sonar-coral'
                     : 'border-sonar-blue/50'
@@ -475,11 +501,13 @@ export function MetadataStep({
                 {...register(`perFileMetadata.${index}.description`)}
                 placeholder="File description"
                 rows={2}
+                readOnly={isSingleFile}
                 className={cn(
                   'w-full px-3 py-2 rounded-sonar text-sm',
                   'bg-sonar-abyss/50 border resize-none',
                   'text-sonar-highlight-bright font-mono',
                   'focus:outline-none focus:ring-2 focus:ring-sonar-signal',
+                  isSingleFile && 'cursor-not-allowed opacity-70',
                   errors.perFileMetadata?.[index]?.description
                     ? 'border-sonar-coral'
                     : 'border-sonar-blue/50'
