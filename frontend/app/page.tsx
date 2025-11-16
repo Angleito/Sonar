@@ -9,8 +9,8 @@ export default function HomePage() {
       {/* Sonic Waveform Hero with Walrus Logo */}
       <SonicWaveformHero
         title="SONAR"
-        subtitle="Sound Oracle Network for Audio Rewards"
-        description="Decentralized marketplace for high-quality conversational audio data with privacy-first design and adaptive token economics"
+        subtitle="Decentralized Audio Data Marketplace"
+        description="High-quality audio datasets across the full spectrum: speech, music, environmental sounds, vocals, sound effects, and more. Built on Sui blockchain with Walrus storage and Mysten Seal encryption."
         ctaText="Explore Marketplace"
         ctaHref="/marketplace"
         logoSrc="/images/walrus-icon.png"
@@ -26,13 +26,13 @@ export default function HomePage() {
         {/* Feature Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-20 max-w-6xl mx-auto">
           <GlassCard className="text-center space-y-4">
-            <div className="text-3xl">🎯</div>
+            <div className="text-3xl">🔍</div>
             <h3 className="text-xl font-mono text-sonar-highlight">
-              Quality First
+              Browse & Purchase
             </h3>
             <p className="text-sm text-sonar-highlight-bright/70">
-              LLM-validated conversational quality scoring. Tiered rewards based
-              on contribution quality (0.001% - 0.005% of supply)
+              Discover high-quality audio datasets. Purchase with SUI tokens.
+              Blockchain-verified ownership and instant access.
             </p>
           </GlassCard>
 
@@ -48,15 +48,22 @@ export default function HomePage() {
           </GlassCard>
 
           <GlassCard className="text-center space-y-4">
-            <div className="text-3xl">⚡</div>
+            <div className="text-3xl">📤</div>
             <h3 className="text-xl font-mono text-sonar-highlight">
-              Adaptive Economics
+              Contribute Data
             </h3>
             <p className="text-sm text-sonar-highlight-bright/70">
-              Absolute-threshold dynamic burn model. Burn rate adjusts from 60%
-              to 20% as supply becomes scarce. Sustainable long-term tokenomics
+              Upload audio datasets of any type: music, speech, environmental sounds, vocals, sound effects, and more. Simple 0.25 SUI upload fee. Earn when buyers purchase your data.
             </p>
           </GlassCard>
+        </div>
+
+        {/* Coming Soon Section */}
+        <div className="max-w-2xl mx-auto text-center py-12 px-6 border border-sonar-signal/20 rounded-lg bg-sonar-abyss/20 backdrop-blur-sm mb-12">
+          <h3 className="text-2xl font-mono text-sonar-highlight mb-4">Coming Soon: SONAR Token Economics</h3>
+          <p className="text-sonar-highlight-bright/80">
+            Advanced reward tiers, deflationary burn model, and quality-based incentives launching in the coming months. Early alpha users will have exclusive access.
+          </p>
         </div>
 
         {/* Stats Preview with Real-Time Data */}

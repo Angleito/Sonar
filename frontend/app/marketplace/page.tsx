@@ -73,7 +73,7 @@ export default function MarketplacePage() {
                 Marketplace
               </h1>
               <p className="text-xl text-sonar-highlight-bright/80">
-                Browse high-quality conversational audio datasets
+                Browse high-quality audio datasets across all categories
               </p>
             </div>
             <SonarButton

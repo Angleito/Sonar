@@ -212,8 +212,28 @@ export class SuiRepository implements DataRepository {
     const errors: Array<{ endpoint: string; error: Error }> = [];
     let showedUserFeedback = false;
 
+    // Log endpoint configuration for debugging
+    logger.debug(`Starting ${operationName} with ${graphqlClients.length} configured GraphQL endpoints`, {
+      endpoints: graphqlClients
+        .filter(item => item && item.endpoint)
+        .map(item => ({ name: item.endpoint.name, url: item.endpoint.url })),
+    });
+
     // Try each GraphQL endpoint in priority order
-    for (const { client, endpoint } of graphqlClients) {
+    for (const item of graphqlClients) {
+      // Validate endpoint configuration exists
+      if (!item || !item.client || !item.endpoint) {
+        logger.warn('Skipping invalid GraphQL client configuration', {
+          operation: operationName,
+          hasItem: !!item,
+          hasClient: !!item?.client,
+          hasEndpoint: !!item?.endpoint,
+        });
+        continue;
+      }
+
+      const { client, endpoint } = item;
+
       // Check circuit breaker - skip if OPEN
       if (!graphqlCircuitBreaker.canAttempt(endpoint.name)) {
         logger.warn(`Skipping ${endpoint.name} endpoint (circuit OPEN)`, {
@@ -268,8 +288,15 @@ export class SuiRepository implements DataRepository {
 
     // All endpoints failed
     const errorMsg = `All GraphQL endpoints failed for ${operationName}`;
+    const configuredEndpoints = graphqlClients
+      .filter(item => item && item.endpoint)
+      .map(item => ({ name: item.endpoint.name, url: item.endpoint.url }));
+
     logger.error(errorMsg, undefined, {
+      operation: operationName,
+      totalConfiguredEndpoints: configuredEndpoints.length,
       attemptedEndpoints: errors.length,
+      configuredEndpoints,
       errors: errors.map(e => ({ endpoint: e.endpoint, message: e.error.message })),
     });
 

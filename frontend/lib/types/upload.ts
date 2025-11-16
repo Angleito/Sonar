@@ -56,7 +56,7 @@ export interface SpeakerMetadata {
 
 export interface ContentCategorization {
   useCase: string; // training-data, podcast, music, ambient, interview, lecture, etc. (required)
-  contentType: string; // conversational, monologue, music, ambient, mixed (required)
+  contentType: string; // speech/dialogue, monologue, music, vocals, environmental, sound-effects, field-recording, ambient, mixed (required)
   domain: string; // technology, healthcare, education, entertainment, etc. (now required)
 }
 

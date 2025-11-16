@@ -8,7 +8,7 @@
 
 ## Overview
 
-SONAR is a decentralized marketplace for high-quality conversational audio data, designed to incentivize creators while ensuring data privacy and quality. Built on the Sui blockchain with Walrus storage and Mysten Seal encryption, SONAR introduces an innovative **absolute-threshold dynamic burn model** that ensures sustainable token economics throughout the protocol's lifecycle.
+SONAR is a decentralized marketplace for high-quality audio data across the full spectrum—speech, music, environmental sounds, vocals, sound effects, and field recordings—designed to incentivize creators while ensuring data privacy and quality. Built on the Sui blockchain with Walrus storage and Mysten Seal encryption, SONAR introduces an innovative **absolute-threshold dynamic burn model** that ensures sustainable token economics throughout the protocol's lifecycle.
 
 **Hackathon:** Walrus Haulout 2025
 **Track:** Data Economy/Marketplaces
@@ -30,7 +30,7 @@ Current audio data marketplaces suffer from:
 SONAR addresses these challenges through:
 
 ### 1. Quality-First Approach
-- LLM-validated conversational quality scoring
+- LLM-validated audio quality scoring and content analysis
 - Tiered rewards based on contribution quality (0.001% - 0.005% of supply)
 - Submission fees prevent spam (0.001% burn)
 
@@ -67,7 +67,7 @@ As the token becomes scarcer, the system automatically:
 ## How It Works
 
 ### For Creators
-1. Record conversational audio
+1. Record or capture audio (speech, music, environmental sounds, etc.)
 2. Upload via SONAR interface (client-side Seal encryption)
 3. Pay small burn fee (0.001% of circulating supply)
 4. Receive LLM quality score
@@ -188,7 +188,7 @@ SONAR cannot access your data:
 - **Client-Side Encryption:** Data never exposed unencrypted
 
 ### Validation
-- **LLM Quality Scoring:** Automated conversational quality assessment
+- **LLM Quality Scoring:** Automated audio quality assessment and content analysis
 - **Resilient Pipeline:** Retry logic for validation failures
 - **On-Chain Verification:** ValidatorCap signatures
 

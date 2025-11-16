@@ -124,12 +124,12 @@ Flag as unsafe (safetyPassed: false) ONLY if content contains:
 - Illegal activity promotion
 - Personally identifiable information (PII)
 
-Conversational datasets with mild profanity, political discussion, or sensitive topics are generally ACCEPTABLE if contextually appropriate.
+Audio datasets with mild profanity, political discussion, or sensitive topics are generally ACCEPTABLE if contextually appropriate. This includes speech, music with explicit lyrics, and natural environmental recordings.
 
 ### Insights:
 Provide 3-5 actionable insights about:
 - Content quality and clarity
-- Potential use cases (conversational AI, voice synthesis, etc.)
+- Potential use cases (AI training, voice synthesis, music production, sound design, environmental modeling, etc.)
 - Unique characteristics of the dataset
 - Market value proposition
 

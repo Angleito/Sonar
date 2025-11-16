@@ -21,19 +21,19 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'SONAR Protocol - Decentralized Audio Data Marketplace',
   description:
-    'High-quality conversational audio data marketplace with privacy-first design and adaptive token economics. Built on Sui with Walrus storage and Mysten Seal encryption.',
-  keywords: ['blockchain', 'audio data', 'sui', 'walrus', 'data marketplace', 'AI training data'],
+    'High-quality audio data marketplace for speech, music, environmental sounds, vocals, sound effects, and more. Privacy-first design with adaptive token economics. Built on Sui with Walrus storage and Mysten Seal encryption.',
+  keywords: ['blockchain', 'audio data', 'music', 'sound', 'sui', 'walrus', 'data marketplace', 'AI training data', 'audio spectrum'],
   authors: [{ name: 'SONAR Protocol' }],
   openGraph: {
     title: 'SONAR Protocol',
-    description: 'Decentralized marketplace for high-quality conversational audio data',
+    description: 'Decentralized marketplace for high-quality audio data: speech, music, environmental sounds, vocals, sound effects, and more',
     type: 'website',
     siteName: 'SONAR Protocol',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'SONAR Protocol',
-    description: 'Decentralized marketplace for high-quality conversational audio data',
+    description: 'Decentralized marketplace for high-quality audio data: speech, music, environmental sounds, vocals, sound effects, and more',
   },
 };
 
