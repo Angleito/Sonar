@@ -798,7 +798,7 @@ export function MetadataStep({
 
           <div className="space-y-2">
             <label className="block text-sm font-mono font-semibold text-sonar-highlight-bright">
-              Domain (optional)
+              Domain *
             </label>
             <select
               {...register('categorization.domain')}
@@ -807,50 +807,67 @@ export function MetadataStep({
                 'bg-sonar-abyss/50 border',
                 'text-sonar-highlight-bright font-mono',
                 'focus:outline-none focus:ring-2 focus:ring-sonar-signal',
-                'border-sonar-blue/50'
+                errors.categorization?.domain
+                  ? 'border-sonar-coral'
+                  : 'border-sonar-blue/50'
               )}
             >
-              <option value="">Select domain (optional)...</option>
+              <option value="">Select domain...</option>
               {DOMAIN_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
             </select>
+            {errors.categorization?.domain && (
+              <p className="text-sm text-sonar-coral font-mono">
+                {errors.categorization.domain.message}
+              </p>
+            )}
           </div>
         </div>
       </SectionCollapsible>
 
       {/* CONSENT SECTION */}
-      <GlassCard className="bg-sonar-blue/5">
+      <GlassCard className={cn(
+        'border-2',
+        consentChecked
+          ? 'bg-sonar-signal/5 border-sonar-signal/30'
+          : 'bg-sonar-coral/5 border-sonar-coral/30'
+      )}>
         <div className="flex items-start space-x-3">
           <input
             id="consent"
             type="checkbox"
             {...register('consent')}
             className={cn(
-              'mt-1 w-5 h-5 rounded border-2',
+              'mt-1 w-5 h-5 rounded border-2 flex-shrink-0',
               'focus:ring-2 focus:ring-sonar-signal focus:ring-offset-2 focus:ring-offset-sonar-abyss',
               'cursor-pointer',
               consentChecked
                 ? 'bg-sonar-signal border-sonar-signal'
-                : 'bg-transparent border-sonar-blue/50'
+                : 'bg-transparent border-sonar-coral/60'
             )}
           />
           <label
             htmlFor="consent"
             className="flex-1 text-sm text-sonar-highlight/80 cursor-pointer"
           >
-            <span className="font-mono font-semibold text-sonar-highlight-bright block mb-1">
+            <span className={cn(
+              'font-mono font-semibold block mb-1',
+              consentChecked ? 'text-sonar-highlight-bright' : 'text-sonar-coral'
+            )}>
               Consent & Rights Confirmation *
             </span>
-            I confirm that I have the necessary rights and permissions to upload
-            and distribute this audio dataset. I understand that this dataset
-            will be encrypted and stored on Walrus, and published to the Sui
-            blockchain.
+            <span className="text-xs text-sonar-highlight/70">
+              I confirm that I have the necessary rights and permissions to upload
+              and distribute this audio dataset. I understand that this dataset
+              will be encrypted and stored on Walrus, and published to the Sui
+              blockchain.
+            </span>
           </label>
         </div>
         {errors.consent && (
-          <p className="text-sm text-sonar-coral font-mono mt-2">
-            {errors.consent.message}
+          <p className="text-sm text-sonar-coral font-mono mt-2 font-semibold">
+            ⚠️ {errors.consent.message}
           </p>
         )}
       </GlassCard>
@@ -870,6 +887,32 @@ export function MetadataStep({
           </div>
         </div>
       </GlassCard>
+
+      {/* VALIDATION SUMMARY - Show missing required fields */}
+      {!isValid && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            'p-4 rounded-sonar',
+            'bg-sonar-signal/10 border border-sonar-signal/50',
+            'text-sonar-signal font-mono text-sm'
+          )}
+        >
+          <p className="font-semibold mb-2">⚠️ Please complete the following before continuing:</p>
+          <ul className="space-y-1 text-xs">
+            {errors.title && <li>• Title: {errors.title.message}</li>}
+            {errors.description && <li>• Description: {errors.description.message}</li>}
+            {errors.languages && <li>• Languages: {errors.languages.message}</li>}
+            {errors.tags && <li>• Tags: {errors.tags.message}</li>}
+            {errors.perFileMetadata && <li>• Per-file metadata: {errors.perFileMetadata.message}</li>}
+            {errors.categorization?.useCase && <li>• Use Case: {errors.categorization.useCase.message}</li>}
+            {errors.categorization?.contentType && <li>• Content Type: {errors.categorization.contentType.message}</li>}
+            {errors.categorization?.domain && <li>• Domain: {errors.categorization.domain.message}</li>}
+            {errors.consent && <li>• Consent: {errors.consent.message}</li>}
+          </ul>
+        </motion.div>
+      )}
 
       {/* ERROR MESSAGE */}
       {error && (
