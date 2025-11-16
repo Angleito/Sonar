@@ -1,4 +1,5 @@
 import type { Dataset, ProtocolStats, DatasetFilter, PaginatedResponse } from '@/types/blockchain';
+import type { LeaderboardResponse, UserRankInfo, LeaderboardFilter, LeaderboardEntry } from '@/types/leaderboard';
 import { DataRepository, parseDataset, parseProtocolStats } from './repository';
 import { suiClient, graphqlClients, DATASET_TYPE, STATS_OBJECT_ID } from '@/lib/sui/client';
 import { GET_DATASETS, GET_DATASET, GET_PROTOCOL_STATS } from '@/lib/sui/queries';
@@ -394,5 +395,72 @@ export class SuiRepository implements DataRepository {
     }
 
     return filtered;
+  }
+
+  /**
+   * Get global leaderboard
+   * Calls backend API for leaderboard data
+   */
+  async getLeaderboard(filter?: LeaderboardFilter): Promise<LeaderboardResponse> {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    if (!backendUrl) {
+      throw new Error('Backend URL not configured. Set NEXT_PUBLIC_BACKEND_URL environment variable.');
+    }
+
+    const params = new URLSearchParams();
+    if (filter?.limit) params.append('limit', filter.limit.toString());
+    if (filter?.offset) params.append('offset', filter.offset.toString());
+    if (filter?.tier) params.append('tier', filter.tier);
+
+    const response = await fetch(`${backendUrl}/api/leaderboard?${params}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch leaderboard: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get user's ranking and tier progress
+   * Calls backend API for user-specific rank data
+   */
+  async getUserRank(walletAddress: string): Promise<UserRankInfo | null> {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    if (!backendUrl) {
+      throw new Error('Backend URL not configured. Set NEXT_PUBLIC_BACKEND_URL environment variable.');
+    }
+
+    const response = await fetch(`${backendUrl}/api/leaderboard/user/${walletAddress}`);
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to fetch user rank: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Search leaderboard by username or wallet address
+   * Calls backend API for search results
+   */
+  async searchLeaderboard(query: string, limit: number = 20): Promise<LeaderboardEntry[]> {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    if (!backendUrl) {
+      throw new Error('Backend URL not configured. Set NEXT_PUBLIC_BACKEND_URL environment variable.');
+    }
+
+    const params = new URLSearchParams({
+      q: query,
+      limit: limit.toString(),
+    });
+
+    const response = await fetch(`${backendUrl}/api/leaderboard/search?${params}`);
+    if (!response.ok) {
+      throw new Error(`Failed to search leaderboard: ${response.statusText}`);
+    }
+
+    return response.json();
   }
 }

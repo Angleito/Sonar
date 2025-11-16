@@ -123,10 +123,12 @@ async function start(): Promise<void> {
   const { registerAuthRoutes } = await import('./routes/auth');
   const { registerDataRoutes } = await import('./routes/data');
   const { registerMonitoringRoutes } = await import('./routes/monitoring');
+  const { registerLeaderboardRoutes } = await import('./routes/leaderboard');
 
   await registerAuthRoutes(fastify);
   await registerDataRoutes(fastify);
   await registerMonitoringRoutes(fastify);
+  await registerLeaderboardRoutes(fastify);
 
   fastify.log.info('Routes registered');
 

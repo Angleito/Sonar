@@ -1,4 +1,5 @@
 import type { Dataset, ProtocolStats, DatasetFilter, PaginatedResponse } from '@/types/blockchain';
+import type { LeaderboardResponse, UserRankInfo, LeaderboardFilter, LeaderboardEntry } from '@/types/leaderboard';
 import { DataRepository, parseDataset, parseProtocolStats } from './repository';
 import seedData from '@/data/seed.json';
 
@@ -81,5 +82,103 @@ export class SeedDataRepository implements DataRepository {
       cursor: nextCursor,
       hasMore,
     };
+  }
+
+  async getLeaderboard(filter?: LeaderboardFilter): Promise<LeaderboardResponse> {
+    const mockLeaderboard: LeaderboardEntry[] = [
+      {
+        rank: 1,
+        wallet_address: '0x1234567890abcdef1234567890abcdef12345678',
+        username: 'SoundMaster',
+        total_points: 125000,
+        total_submissions: 450,
+        average_rarity_score: 8.5,
+        tier: 'Legend',
+        first_bulk_contributions: 12,
+        rare_subject_contributions: 89,
+      },
+      {
+        rank: 2,
+        wallet_address: '0x2345678901bcdef2345678901bcdef2345678901',
+        username: 'AudioWizard',
+        total_points: 87500,
+        total_submissions: 320,
+        average_rarity_score: 7.8,
+        tier: 'Diamond',
+        first_bulk_contributions: 8,
+        rare_subject_contributions: 65,
+      },
+      {
+        rank: 3,
+        wallet_address: '0x3456789012cdef3456789012cdef3456789012cd',
+        username: 'VoiceCollector',
+        total_points: 62000,
+        total_submissions: 280,
+        average_rarity_score: 7.2,
+        tier: 'Platinum',
+        first_bulk_contributions: 5,
+        rare_subject_contributions: 42,
+      },
+    ];
+
+    let filtered = mockLeaderboard;
+    if (filter?.tier) {
+      filtered = filtered.filter(e => e.tier === filter.tier);
+    }
+
+    const limit = filter?.limit || 100;
+    const offset = filter?.offset || 0;
+    const paged = filtered.slice(offset, offset + limit);
+
+    return {
+      entries: paged,
+      total: filtered.length,
+      limit,
+      offset,
+    };
+  }
+
+  async getUserRank(walletAddress: string): Promise<UserRankInfo | null> {
+    const userRankData: UserRankInfo = {
+      rank: 25,
+      wallet_address: walletAddress,
+      username: 'YourUsername',
+      total_points: 35000,
+      total_submissions: 150,
+      average_rarity_score: 6.5,
+      tier: 'Gold',
+      first_bulk_contributions: 3,
+      rare_subject_contributions: 18,
+      tier_progress: {
+        current_tier: 'Gold',
+        next_tier: 'Platinum',
+        points_needed: 25000 - 35000 + 25000,
+        progress_percent: 40,
+      },
+    };
+
+    return userRankData;
+  }
+
+  async searchLeaderboard(query: string, limit: number = 20): Promise<LeaderboardEntry[]> {
+    const mockResults: LeaderboardEntry[] = [
+      {
+        rank: 1,
+        wallet_address: '0x1234567890abcdef1234567890abcdef12345678',
+        username: 'SoundMaster',
+        total_points: 125000,
+        total_submissions: 450,
+        average_rarity_score: 8.5,
+        tier: 'Legend',
+        first_bulk_contributions: 12,
+        rare_subject_contributions: 89,
+      },
+    ];
+
+    return mockResults.filter(
+      e =>
+        e.username.toLowerCase().includes(query.toLowerCase()) ||
+        e.wallet_address.includes(query)
+    );
   }
 }

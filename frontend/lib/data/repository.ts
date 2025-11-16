@@ -1,4 +1,5 @@
 import type { Dataset, ProtocolStats, DatasetFilter, PaginatedResponse } from '@/types/blockchain';
+import type { LeaderboardResponse, UserRankInfo, LeaderboardFilter } from '@/types/leaderboard';
 
 /**
  * Repository interface for data access
@@ -28,6 +29,21 @@ export interface DataRepository {
     filter?: DatasetFilter,
     cursor?: string
   ): Promise<PaginatedResponse<Dataset>>;
+
+  /**
+   * Get global leaderboard with optional filtering
+   */
+  getLeaderboard(filter?: LeaderboardFilter): Promise<LeaderboardResponse>;
+
+  /**
+   * Get user's ranking and tier progress
+   */
+  getUserRank(walletAddress: string): Promise<UserRankInfo | null>;
+
+  /**
+   * Search leaderboard by username or wallet
+   */
+  searchLeaderboard(query: string, limit?: number): Promise<any[]>;
 }
 
 /**
