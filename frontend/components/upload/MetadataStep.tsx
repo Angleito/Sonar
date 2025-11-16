@@ -185,8 +185,8 @@ export function MetadataStep({
     categorization: true,
   });
 
-  // Initialize default values
-  const defaultPerFileMetadata = audioFiles.map((f) => ({
+  // Initialize default values - handle undefined audioFiles
+  const defaultPerFileMetadata = (audioFiles && Array.isArray(audioFiles) ? audioFiles : []).map((f) => ({
     fileId: f.id || '',
     title: f.file.name.replace(/\.[^.]+$/, ''),
     description: '',
