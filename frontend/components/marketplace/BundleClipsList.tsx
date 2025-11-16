@@ -84,14 +84,14 @@ export function BundleClipsList({ clips, className }: BundleClipsListProps) {
                 </div>
 
                 {/* Tags */}
-                {clip.languages.length > 0 && (
+                {clip.languages && Array.isArray(clip.languages) && clip.languages.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {clip.languages.map((lang) => (
                       <span
                         key={lang}
                         className="text-[10px] font-mono px-1.5 py-0.5 bg-sonar-signal/10 text-sonar-highlight-bright/70 rounded border border-sonar-signal/20"
                       >
-                        {lang.toUpperCase()}
+                        {lang === 'other' ? 'Other' : lang.toUpperCase()}
                       </span>
                     ))}
                   </div>

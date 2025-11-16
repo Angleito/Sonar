@@ -187,21 +187,23 @@ export function DatasetCard({ dataset, onPurchase }: DatasetCardProps) {
         </p>
 
         {/* Languages */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {dataset.languages.slice(0, 3).map((lang) => (
-            <span
-              key={lang}
-              className="text-xs font-mono px-2 py-1 bg-sonar-signal/10 text-sonar-highlight-bright rounded border border-sonar-signal/30"
-            >
-              {lang.toUpperCase()}
-            </span>
-          ))}
-          {dataset.languages.length > 3 && (
-            <span className="text-xs font-mono px-2 py-1 text-sonar-highlight-bright/50">
-              +{dataset.languages.length - 3}
-            </span>
-          )}
-        </div>
+        {dataset.languages && Array.isArray(dataset.languages) && dataset.languages.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {dataset.languages.slice(0, 3).map((lang) => (
+              <span
+                key={lang}
+                className="text-xs font-mono px-2 py-1 bg-sonar-signal/10 text-sonar-highlight-bright rounded border border-sonar-signal/30"
+              >
+                {lang === 'other' ? 'Other' : lang.toUpperCase()}
+              </span>
+            ))}
+            {dataset.languages.length > 3 && (
+              <span className="text-xs font-mono px-2 py-1 text-sonar-highlight-bright/50">
+                +{dataset.languages.length - 3}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Footer: Price + Status */}
         <div className="flex items-center justify-between pt-4 border-t border-white/5">

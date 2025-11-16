@@ -70,21 +70,23 @@ export function DatasetMetadata({ dataset }: DatasetMetadataProps) {
         </div>
 
         {/* Languages */}
-        <div>
-          <h4 className="text-sm font-mono text-sonar-highlight-bright/70 mb-3">
-            Supported Languages
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {dataset.languages.map((lang) => (
-              <span
-                key={lang}
-                className="px-3 py-2 bg-sonar-signal/10 text-sonar-highlight-bright rounded border border-sonar-signal/30 text-sm font-mono"
-              >
-                {lang.toUpperCase()}
-              </span>
-            ))}
+        {dataset.languages && Array.isArray(dataset.languages) && dataset.languages.length > 0 && (
+          <div>
+            <h4 className="text-sm font-mono text-sonar-highlight-bright/70 mb-3">
+              Supported Languages
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {dataset.languages.map((lang) => (
+                <span
+                  key={lang}
+                  className="px-3 py-2 bg-sonar-signal/10 text-sonar-highlight-bright rounded border border-sonar-signal/30 text-sm font-mono"
+                >
+                  {lang === 'other' ? 'Other' : lang.toUpperCase()}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Storage & Encryption */}
         <div>

@@ -106,12 +106,12 @@ export default function DatasetDetailPage() {
 
             {/* Languages and Formats */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {dataset.languages.map((lang) => (
+              {dataset.languages && Array.isArray(dataset.languages) && dataset.languages.map((lang) => (
                 <span
                   key={lang}
                   className="text-xs font-mono px-3 py-1 bg-sonar-signal/10 text-sonar-highlight-bright rounded border border-sonar-signal/30"
                 >
-                  {lang.toUpperCase()}
+                  {lang === 'other' ? 'Other' : lang.toUpperCase()}
                 </span>
               ))}
               <span className="text-xs font-mono px-3 py-1 bg-sonar-highlight/10 text-sonar-highlight rounded border border-sonar-highlight/30">
