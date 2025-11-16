@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useWallet } from '@suiet/wallet-kit';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useLeaderboard, useUserRank } from '@/hooks/useLeaderboard';
 import { SonarBackground } from '@/components/animations/SonarBackground';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -13,7 +13,7 @@ import { LeaderboardSearch } from '@/components/leaderboard/LeaderboardSearch';
 import type { LeaderboardTier } from '@/types/leaderboard';
 
 export default function LeaderboardPage() {
-  const { currentAccount } = useWallet();
+  const currentAccount = useCurrentAccount();
   const [selectedTier, setSelectedTier] = useState<LeaderboardTier | undefined>();
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 50;

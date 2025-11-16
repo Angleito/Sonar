@@ -4,11 +4,21 @@ import { SonarButton } from '@/components/ui/SonarButton';
 import { SignalBadge } from '@/components/ui/SignalBadge';
 import { SonarBackground } from '@/components/animations/SonarBackground';
 import { RadarScanTarget } from '@/components/animations/RadarScanTarget';
+import { SonicWaveformHero } from '@/components/animations/SonicWaveformHero';
 import { ProtocolStatsSection } from '@/components/sections/ProtocolStatsSection';
 
 export default function HomePage() {
   return (
-    <main className="relative min-h-screen">
+    <main className="relative">
+      {/* Sonic Waveform Hero */}
+      <SonicWaveformHero
+        title="SONAR"
+        subtitle="Sound Oracle Network"
+        description="Decentralized marketplace for high-quality conversational audio data with privacy-first design and adaptive token economics"
+        ctaText="Explore Marketplace"
+        ctaHref="/marketplace"
+      />
+
       {/* Animated Sonar Background */}
       <SonarBackground opacity={0.3} intensity={0.6} />
 
