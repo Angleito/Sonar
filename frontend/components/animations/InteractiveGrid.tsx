@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-interface Dot {
+interface Position {
   x: number;
   y: number;
+}
+
+interface Dot extends Position {
   render: (
     ctx: CanvasRenderingContext2D,
-    mouse: Dot,
+    mouse: Position,
     params: CanvasParams
   ) => void;
 }
