@@ -10,6 +10,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { prisma as defaultPrisma } from "../lib/db";
 import { storeSealMetadata, type FileSealMetadata } from "./dataset-service";
 import { logger } from "../lib/logger";
+import { suiClient, SONAR_PACKAGE_ID } from "../lib/sui/client";
 
 // Exponential backoff delays in ms: 30s, 1m, 2m, 4m, 8m, 15m, 30m, 1h, 2h, 4h
 const BACKOFF_DELAYS = [
@@ -19,6 +20,82 @@ const BACKOFF_DELAYS = [
 
 const MAX_ATTEMPTS = 10;
 const BATCH_SIZE = 20;
+
+/**
+ * Find datasetId from a transaction digest by querying the blockchain
+ * Replicates the frontend's 5-step extraction logic
+ */
+async function findDatasetIdFromTxDigest(txDigest: string): Promise<string | null> {
+  try {
+    const txDetails = await suiClient.getTransactionBlock({
+      digest: txDigest,
+      options: {
+        showObjectChanges: true,
+        showEvents: true,
+        showEffects: true,
+      },
+    });
+
+    // Method 1: Check objectChanges for AudioSubmission or DatasetSubmission
+    if (txDetails.objectChanges) {
+      for (const change of txDetails.objectChanges) {
+        if (change.type === "created" && "objectType" in change) {
+          const objType = change.objectType;
+          if (
+            objType.includes("AudioSubmission") ||
+            objType.includes("DatasetSubmission")
+          ) {
+            logger.info(
+              { datasetId: change.objectId, method: "objectChanges" },
+              "Found datasetId from tx"
+            );
+            return change.objectId;
+          }
+        }
+      }
+    }
+
+    // Method 2: Check events for DatasetCreated
+    if (txDetails.events) {
+      for (const event of txDetails.events) {
+        if (event.type.includes("DatasetCreated") && event.parsedJson) {
+          const parsed = event.parsedJson as Record<string, any>;
+          if (parsed.dataset_id || parsed.id) {
+            const datasetId = parsed.dataset_id || parsed.id;
+            logger.info(
+              { datasetId, method: "events" },
+              "Found datasetId from tx"
+            );
+            return datasetId;
+          }
+        }
+      }
+    }
+
+    // Method 3: Fallback - look for created objects from our package
+    if (txDetails.objectChanges && SONAR_PACKAGE_ID) {
+      for (const change of txDetails.objectChanges) {
+        if (
+          change.type === "created" &&
+          "objectType" in change &&
+          change.objectType.includes(SONAR_PACKAGE_ID)
+        ) {
+          logger.info(
+            { datasetId: change.objectId, method: "packageMatch" },
+            "Found datasetId from tx"
+          );
+          return change.objectId;
+        }
+      }
+    }
+
+    logger.warn({ txDigest }, "Could not find datasetId from transaction");
+    return null;
+  } catch (error) {
+    logger.error({ txDigest, error }, "Failed to query transaction for datasetId");
+    return null;
+  }
+}
 
 export class MetadataProcessor {
   private prisma: PrismaClient;
@@ -68,9 +145,43 @@ export class MetadataProcessor {
    */
   private async processItem(item: PendingMetadata): Promise<void> {
     const attemptNumber = item.attempts + 1;
+    let datasetId = item.dataset_id;
+
+    // Check if this is a pending ID (e.g., "pending:txDigest")
+    const isPending = datasetId.startsWith("pending:");
+
+    if (isPending && item.tx_digest) {
+      logger.info(
+        { txDigest: item.tx_digest, attempt: attemptNumber },
+        "Resolving datasetId from pending transaction"
+      );
+
+      // Try to find the real datasetId from the blockchain
+      const resolvedId = await findDatasetIdFromTxDigest(item.tx_digest);
+
+      if (resolvedId) {
+        datasetId = resolvedId;
+
+        // Update the record with the resolved datasetId
+        await this.prisma.pendingMetadata.update({
+          where: { id: item.id },
+          data: { dataset_id: resolvedId },
+        });
+
+        logger.info(
+          { txDigest: item.tx_digest, datasetId: resolvedId },
+          "Resolved datasetId from transaction"
+        );
+      } else {
+        // Dataset not yet indexed - throw error to trigger retry
+        throw new Error(
+          `Dataset not yet indexed on blockchain (txDigest: ${item.tx_digest})`
+        );
+      }
+    }
 
     logger.info(
-      { datasetId: item.dataset_id, attempt: attemptNumber },
+      { datasetId, attempt: attemptNumber, wasPending: isPending },
       "Processing pending metadata"
     );
 
@@ -83,7 +194,7 @@ export class MetadataProcessor {
     try {
       // Call existing storeSealMetadata (which handles blockchain fetching)
       await storeSealMetadata({
-        datasetId: item.dataset_id,
+        datasetId,
         userAddress: item.user_address,
         files: item.files as unknown as FileSealMetadata[],
         verification: item.verification as any,

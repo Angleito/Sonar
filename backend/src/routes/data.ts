@@ -20,6 +20,7 @@ import { isHttpError, toErrorResponse } from "../lib/errors";
 interface SealMetadataBody {
   files: FileSealMetadata[];
   tx_digest?: string;
+  txDigest?: string; // Also accept camelCase from frontend
   verification?: {
     verification_id: string;
     quality_score?: number;
@@ -159,7 +160,15 @@ export async function registerDataRoutes(
       reply: FastifyReply,
     ) => {
       try {
-        const datasetId = assertDatasetId(request.params.id);
+        const rawId = request.params.id;
+        const isPending = rawId.startsWith("pending:");
+        const txDigestFromUrl = isPending ? rawId.slice(8) : null;
+
+        // Get txDigest from URL (for pending: prefix) or body (camelCase or snake_case)
+        const txDigest = txDigestFromUrl || request.body.txDigest || request.body.tx_digest;
+
+        // Validate datasetId only if not pending
+        const datasetId = isPending ? rawId : assertDatasetId(rawId);
         const userAddress = request.user!.address;
         const { files, verification, metadata } = request.body;
 
@@ -171,6 +180,19 @@ export async function registerDataRoutes(
           });
         }
 
+        // For pending requests, txDigest is required for later matching
+        if (isPending && !txDigest) {
+          return reply.code(400).send({
+            error: "INVALID_REQUEST",
+            message: "txDigest is required when using pending: prefix",
+          });
+        }
+
+        request.log.info(
+          { rawId, isPending, txDigest: txDigest?.slice(0, 20), hasDatasetId: !isPending },
+          "Processing seal-metadata request"
+        );
+
         // Queue for background processing instead of blocking
         // This handles RPC indexing lag gracefully
         await queueMetadataForProcessing({
@@ -179,7 +201,7 @@ export async function registerDataRoutes(
           files,
           verification,
           metadata,
-          txDigest: request.body.tx_digest,
+          txDigest,
         });
 
         request.log.info(

@@ -524,35 +524,35 @@ export function PublishStep({
                 }
               }
 
+              // If datasetId extraction failed, use txDigest as fallback for backend matching
+              const finalDatasetId = datasetId || `pending:${result.digest}`;
+
               if (!datasetId) {
-                console.error(
-                  "[PublishStep] ❌ Failed to extract dataset ID. Transaction details:",
+                console.warn(
+                  "[PublishStep] ⚠️ Dataset ID extraction failed, using txDigest fallback for backend matching",
                   {
                     digest: result.digest,
-                    objectChanges: txDetails.objectChanges,
-                    events: txDetails.events,
-                    effectsCreated: txDetails.effects?.created,
-                    effectsMutated: txDetails.effects?.mutated,
+                    objectChanges: txDetails.objectChanges?.length || 0,
+                    events: txDetails.events?.length || 0,
+                    effectsCreated: txDetails.effects?.created?.length || 0,
                   },
-                );
-                throw new Error(
-                  "Failed to extract dataset ID from transaction. " +
-                    "The transaction succeeded but no AudioSubmission or DatasetSubmission object was found. " +
-                    `Transaction digest: ${result.digest}`,
                 );
               }
 
-              if (datasetId) {
+              // Always proceed - we have either real datasetId or pending:txDigest fallback
+              {
                 // Generate explorer URLs for user
                 const network = "mainnet";
-                const explorerUrl = `https://suiscan.xyz/${network}/object/${datasetId}`;
+                const explorerUrl = datasetId
+                  ? `https://suiscan.xyz/${network}/object/${datasetId}`
+                  : null;
                 const txExplorerUrl = `https://suiscan.xyz/${network}/tx/${result.digest}`;
 
                 console.log(
                   `[PublishStep] ✅ Dataset published successfully!\n` +
-                    `Dataset ID: ${datasetId}\n` +
+                    `Dataset ID: ${finalDatasetId}\n` +
                     `Transaction: ${result.digest}\n` +
-                    `View Dataset: ${explorerUrl}\n` +
+                    (explorerUrl ? `View Dataset: ${explorerUrl}\n` : "") +
                     `View Transaction: ${txExplorerUrl}`,
                 );
 
@@ -646,14 +646,23 @@ export function PublishStep({
                   };
 
                   await submitMetadataWithAuth(
-                    datasetId,
+                    finalDatasetId,
                     {
                       files,
                       verification: verificationMetadata as any,
                       metadata: datasetMetadata,
+                      txDigest: result.digest, // Always include txDigest for backend matching
                     },
                     getAuthHeader,
                   );
+
+                  // Show warning toast if using fallback
+                  if (!datasetId) {
+                    toast.warning(
+                      "Dataset published! Metadata sync may take a few minutes due to network indexing.",
+                      { duration: 8000 }
+                    );
+                  }
                 } catch (error) {
                   const errorMsg =
                     error instanceof Error
@@ -694,7 +703,7 @@ export function PublishStep({
                     // Show success with a warning about delayed metadata
                     onPublished({
                       txDigest: result.digest,
-                      datasetId,
+                      datasetId: finalDatasetId,
                       confirmed: true,
                     });
 
@@ -731,7 +740,7 @@ export function PublishStep({
 
                 onPublished({
                   txDigest: result.digest,
-                  datasetId,
+                  datasetId: datasetId || finalDatasetId, // Use real ID if available, else fallback
                   confirmed: true,
                 });
                 return;

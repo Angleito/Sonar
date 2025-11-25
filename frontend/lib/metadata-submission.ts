@@ -101,6 +101,7 @@ export async function submitMetadataWithAuth(
       quality_breakdown?: any;
     } | null;
     metadata: any;
+    txDigest?: string; // For backend matching when datasetId is pending:*
   },
   getAuthHeader: () => string | null,
 ): Promise<void> {

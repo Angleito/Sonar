@@ -352,5 +352,6 @@ model PendingMetadata {
 
   @@index([status, next_retry_at])
   @@index([dataset_id])
+  @@index([tx_digest])  // For txDigest-based lookups when datasetId is pending
   @@map("pending_metadata")
 }

@@ -4,8 +4,8 @@
  */
 export async function retryTransactionQuery<T>(
   fn: () => Promise<T>,
-  maxRetries: number = 5,
-  baseDelay: number = 1000,
+  maxRetries: number = 8,
+  baseDelay: number = 2000,
 ): Promise<T> {
   for (let i = 0; i < maxRetries; i++) {
     try {
