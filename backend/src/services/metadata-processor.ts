@@ -150,6 +150,17 @@ export class MetadataProcessor {
     // Check if this is a pending ID (e.g., "pending:txDigest")
     const isPending = datasetId.startsWith("pending:");
 
+    // Debug logging to diagnose queue processing issues
+    logger.info({
+      datasetId,
+      isPending,
+      hasTxDigest: !!item.tx_digest,
+      txDigest: item.tx_digest?.slice(0, 20),
+      attempts: attemptNumber,
+      createdAt: item.created_at,
+      userAddress: item.user_address?.slice(0, 20),
+    }, "Processing pending metadata item");
+
     if (isPending && item.tx_digest) {
       logger.info(
         { txDigest: item.tx_digest, attempt: attemptNumber },
