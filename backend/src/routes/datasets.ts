@@ -164,28 +164,14 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
               });
               request.log.info({ datasetId: id }, 'Dataset created with full metadata');
             } else {
-              // Check if there's ANY recent pending record for this creator (still processing)
-              const anyPending = await prisma.pendingMetadata.findFirst({
-                where: {
-                  user_address: onChainData.creator,
-                  status: { in: ['pending', 'processing'] },
-                  created_at: { gte: fiveMinutesAgo }
-                }
+              // No pending metadata found yet - return 202 and let frontend retry
+              // This handles the race condition where metadata POST hasn't committed yet
+              request.log.info({ datasetId: id, creator: onChainData.creator }, 'Dataset on-chain but no metadata yet, returning 202');
+              return reply.code(202).send({
+                status: 'processing',
+                message: 'Dataset is being indexed. Please wait...',
+                retryAfter: 2
               });
-
-              if (anyPending) {
-                // Metadata is still being processed - tell frontend to wait and retry
-                request.log.info({ datasetId: id, creator: onChainData.creator }, 'Metadata still processing, returning 202');
-                return reply.code(202).send({
-                  status: 'processing',
-                  message: 'Dataset metadata is still being processed',
-                  retryAfter: 3
-                });
-              }
-
-              // No pending metadata - create with placeholder (old behavior)
-              dataset = await repository.createFromBlockchain(id, onChainData);
-              request.log.info({ datasetId: id }, 'Dataset created with placeholder data');
             }
           }
         } catch (fallbackError) {
@@ -271,28 +257,14 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
               });
               request.log.info({ datasetId: id }, 'Dataset created with full metadata');
             } else {
-              // Check if there's ANY recent pending record for this creator (still processing)
-              const anyPending = await prisma.pendingMetadata.findFirst({
-                where: {
-                  user_address: onChainData.creator,
-                  status: { in: ['pending', 'processing'] },
-                  created_at: { gte: fiveMinutesAgo }
-                }
+              // No pending metadata found yet - return 202 and let frontend retry
+              // This handles the race condition where metadata POST hasn't committed yet
+              request.log.info({ datasetId: id, creator: onChainData.creator }, 'Dataset on-chain but no metadata yet, returning 202');
+              return reply.code(202).send({
+                status: 'processing',
+                message: 'Dataset is being indexed. Please wait...',
+                retryAfter: 2
               });
-
-              if (anyPending) {
-                // Metadata is still being processed - tell frontend to wait and retry
-                request.log.info({ datasetId: id, creator: onChainData.creator }, 'Metadata still processing, returning 202');
-                return reply.code(202).send({
-                  status: 'processing',
-                  message: 'Dataset metadata is still being processed',
-                  retryAfter: 3
-                });
-              }
-
-              // No pending metadata - create with placeholder (old behavior)
-              backendDataset = await repository.createFromBlockchain(id, onChainData);
-              request.log.info({ datasetId: id }, 'Dataset created with placeholder data');
             }
           }
         } catch (fallbackError) {
