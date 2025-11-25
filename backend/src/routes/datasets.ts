@@ -138,7 +138,10 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 where: {
                   dataset_id: { startsWith: 'pending:' },
                   status: { in: ['pending', 'processing'] },
-                  user_address: onChainData.creator,
+                  user_address: {
+                    equals: onChainData.creator,
+                    mode: 'insensitive'
+                  },
                   created_at: { gte: fiveMinutesAgo }
                 },
                 orderBy: { created_at: 'desc' }
@@ -231,7 +234,10 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 where: {
                   dataset_id: { startsWith: 'pending:' },
                   status: { in: ['pending', 'processing'] },
-                  user_address: onChainData.creator,
+                  user_address: {
+                    equals: onChainData.creator,
+                    mode: 'insensitive'
+                  },
                   created_at: { gte: fiveMinutesAgo }
                 },
                 orderBy: { created_at: 'desc' }
