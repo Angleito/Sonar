@@ -15,6 +15,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { DatasetRepository } from '../services/dataset-repository';
+import { fetchDatasetFromBlockchain } from '../services/dataset-service';
 
 const repository = new DatasetRepository();
 
@@ -105,7 +106,7 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
 
   /**
    * GET /api/datasets/:id
-   * Get single dataset
+   * Get single dataset (with blockchain fallback)
    */
   fastify.get<{
     Params: { id: string };
@@ -113,7 +114,22 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
     try {
       const { id } = request.params;
 
-      const dataset = await repository.getDataset(id);
+      let dataset = await repository.getDataset(id);
+
+      // Fallback: If not in PostgreSQL, try fetching from blockchain
+      if (!dataset) {
+        request.log.info({ datasetId: id }, 'Dataset not in DB, trying blockchain fallback');
+
+        try {
+          const onChainData = await fetchDatasetFromBlockchain(id, request.log);
+          if (onChainData) {
+            dataset = await repository.createFromBlockchain(id, onChainData);
+            request.log.info({ datasetId: id }, 'Dataset created from blockchain fallback');
+          }
+        } catch (fallbackError) {
+          request.log.warn({ datasetId: id, error: fallbackError }, 'Blockchain fallback failed');
+        }
+      }
 
       if (!dataset) {
         return reply.code(404).send({
@@ -144,7 +160,22 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
       const { id } = request.params;
 
       // Fetch backend dataset (includes seal metadata, verification, etc.)
-      const backendDataset = await repository.getDataset(id);
+      let backendDataset = await repository.getDataset(id);
+
+      // Fallback: If not in PostgreSQL, try fetching from blockchain
+      if (!backendDataset) {
+        request.log.info({ datasetId: id }, 'Dataset not in DB, trying blockchain fallback');
+
+        try {
+          const onChainData = await fetchDatasetFromBlockchain(id, request.log);
+          if (onChainData) {
+            backendDataset = await repository.createFromBlockchain(id, onChainData);
+            request.log.info({ datasetId: id }, 'Dataset created from blockchain fallback');
+          }
+        } catch (fallbackError) {
+          request.log.warn({ datasetId: id, error: fallbackError }, 'Blockchain fallback failed');
+        }
+      }
 
       if (!backendDataset) {
         return reply.code(404).send({

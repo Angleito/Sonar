@@ -147,7 +147,7 @@ function selectPrimaryBlob(blobs: BlobType[]): BlobType {
  * Implements retry logic with exponential backoff to handle RPC indexing lag
  * for newly created objects (they may not be immediately queryable)
  */
-async function fetchDatasetFromBlockchain(
+export async function fetchDatasetFromBlockchain(
   datasetId: string,
   logger: FastifyBaseLogger
 ): Promise<{

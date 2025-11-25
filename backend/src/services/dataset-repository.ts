@@ -176,6 +176,41 @@ export class DatasetRepository {
   }
 
   /**
+   * Create a dataset from blockchain data (fallback when not in PostgreSQL)
+   */
+  async createFromBlockchain(
+    id: string,
+    onChainData: {
+      creator: string;
+      quality_score: number;
+      price: bigint;
+      listed: boolean;
+      duration_seconds: number;
+    }
+  ) {
+    return this.prisma.dataset.create({
+      data: {
+        id,
+        creator: onChainData.creator,
+        quality_score: onChainData.quality_score,
+        price: onChainData.price,
+        listed: onChainData.listed,
+        duration_seconds: onChainData.duration_seconds,
+        languages: [],
+        formats: ["audio/mpeg"],
+        media_type: "audio",
+        title: `Audio Dataset`,
+        description: "",
+        total_purchases: 0,
+        blockchain_synced_at: new Date(),
+      },
+      include: {
+        blobs: true,
+      },
+    });
+  }
+
+  /**
    * Get paginated datasets
    */
   async getDatasetsPaginated(filter: DatasetFilter & { cursor?: string; limit?: number }) {
