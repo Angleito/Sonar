@@ -16,6 +16,7 @@
 import type { FastifyInstance } from 'fastify';
 import { DatasetRepository } from '../services/dataset-repository';
 import { fetchDatasetFromBlockchain } from '../services/dataset-service';
+import { findDatasetIdFromTxDigest } from '../services/metadata-processor';
 import { prisma } from '../lib/db';
 
 const repository = new DatasetRepository();
@@ -125,9 +126,35 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
             // Check if there's pending metadata from the upload flow
-            const pendingMeta = await prisma.pendingMetadata.findFirst({
+            let pendingMeta = await prisma.pendingMetadata.findFirst({
               where: { dataset_id: id }
             });
+
+            // Fallback: search by tx_digest if not found by dataset_id
+            // (metadata was stored with "pending:txDigest" before resolution)
+            if (!pendingMeta) {
+              const pendingRecords = await prisma.pendingMetadata.findMany({
+                where: {
+                  dataset_id: { startsWith: 'pending:' },
+                  status: { in: ['pending', 'processing'] }
+                }
+              });
+
+              for (const record of pendingRecords) {
+                if (record.tx_digest) {
+                  const resolvedId = await findDatasetIdFromTxDigest(record.tx_digest);
+                  if (resolvedId === id) {
+                    pendingMeta = record;
+                    await prisma.pendingMetadata.update({
+                      where: { id: record.id },
+                      data: { dataset_id: id }
+                    });
+                    request.log.info({ datasetId: id, txDigest: record.tx_digest }, 'Resolved pending metadata by txDigest');
+                    break;
+                  }
+                }
+              }
+            }
 
             if (pendingMeta) {
               request.log.info({ datasetId: id }, 'Found pending metadata, using for dataset creation');
@@ -191,9 +218,35 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
             // Check if there's pending metadata from the upload flow
-            const pendingMeta = await prisma.pendingMetadata.findFirst({
+            let pendingMeta = await prisma.pendingMetadata.findFirst({
               where: { dataset_id: id }
             });
+
+            // Fallback: search by tx_digest if not found by dataset_id
+            // (metadata was stored with "pending:txDigest" before resolution)
+            if (!pendingMeta) {
+              const pendingRecords = await prisma.pendingMetadata.findMany({
+                where: {
+                  dataset_id: { startsWith: 'pending:' },
+                  status: { in: ['pending', 'processing'] }
+                }
+              });
+
+              for (const record of pendingRecords) {
+                if (record.tx_digest) {
+                  const resolvedId = await findDatasetIdFromTxDigest(record.tx_digest);
+                  if (resolvedId === id) {
+                    pendingMeta = record;
+                    await prisma.pendingMetadata.update({
+                      where: { id: record.id },
+                      data: { dataset_id: id }
+                    });
+                    request.log.info({ datasetId: id, txDigest: record.tx_digest }, 'Resolved pending metadata by txDigest');
+                    break;
+                  }
+                }
+              }
+            }
 
             if (pendingMeta) {
               request.log.info({ datasetId: id }, 'Found pending metadata, using for dataset creation');

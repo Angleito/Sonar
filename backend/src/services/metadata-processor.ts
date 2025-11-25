@@ -25,7 +25,7 @@ const BATCH_SIZE = 20;
  * Find datasetId from a transaction digest by querying the blockchain
  * Replicates the frontend's 5-step extraction logic
  */
-async function findDatasetIdFromTxDigest(txDigest: string): Promise<string | null> {
+export async function findDatasetIdFromTxDigest(txDigest: string): Promise<string | null> {
   try {
     const txDetails = await suiClient.getTransactionBlock({
       digest: txDigest,
