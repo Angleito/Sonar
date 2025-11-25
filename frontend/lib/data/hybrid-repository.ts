@@ -121,6 +121,11 @@ export class HybridRepository implements DataRepository {
 
       return enriched;
     } catch (error) {
+      // Re-throw 202 errors to trigger React Query retry
+      const err = error as Error & { status?: number };
+      if (err.status === 202) {
+        throw error;
+      }
       logger.warn(`Failed to enrich dataset ${dataset.id} with backend metadata: ${error}`);
       return dataset;
     }
