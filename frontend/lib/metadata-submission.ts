@@ -12,9 +12,9 @@ import { toastError, toastSuccess, toastLoading, dismissToast } from "@/lib/toas
 
 // Retry configuration
 const RETRY_CONFIG = {
-  maxRetries: 3,
-  baseDelay: 1000, // 1 second
-  maxDelay: 8000, // 8 seconds
+  maxRetries: 10,      // Increased from 3 to 10
+  baseDelay: 1000,     // 1 second
+  maxDelay: 8000,      // 8 seconds
   jitterFactor: 0.2,
 };
 

@@ -323,6 +323,14 @@ export function PublishStep({
 
       setPublishState("broadcasting");
 
+      // Capture auth header BEFORE signing - it may expire during transaction
+      const capturedAuthHeader = getAuthHeader();
+      if (!capturedAuthHeader) {
+        onError("Authentication required. Please reconnect your wallet.");
+        setPublishState("idle");
+        return;
+      }
+
       // Sign and execute (for multi-file datasets using old flow)
       signAndExecute(
         {
@@ -645,16 +653,44 @@ export function PublishStep({
                     categorization: metadata.categorization,
                   };
 
-                  await submitMetadataWithAuth(
-                    finalDatasetId,
-                    {
-                      files,
-                      verification: verificationMetadata as any,
-                      metadata: datasetMetadata,
-                      txDigest: result.digest, // Always include txDigest for backend matching
-                    },
-                    getAuthHeader,
-                  );
+                  const metadataPayload = {
+                    files,
+                    verification: verificationMetadata as any,
+                    metadata: datasetMetadata,
+                    txDigest: result.digest,
+                  };
+
+                  // Try with captured auth header first
+                  try {
+                    await submitMetadataWithAuth(
+                      finalDatasetId,
+                      metadataPayload,
+                      () => capturedAuthHeader,
+                    );
+                  } catch (authError: any) {
+                    // If auth failed, try re-authenticating once
+                    if (authError.message?.includes("Not authenticated")) {
+                      console.log("[PublishStep] Auth expired during transaction, re-authenticating...");
+                      try {
+                        await authenticate();
+                        const newAuthHeader = getAuthHeader();
+                        if (newAuthHeader) {
+                          await submitMetadataWithAuth(
+                            finalDatasetId,
+                            metadataPayload,
+                            () => newAuthHeader,
+                          );
+                        } else {
+                          throw new Error("Re-authentication failed - no auth header");
+                        }
+                      } catch (reAuthError: any) {
+                        console.error("[PublishStep] Re-authentication failed:", reAuthError);
+                        throw authError; // Throw original error
+                      }
+                    } else {
+                      throw authError;
+                    }
+                  }
 
                   // Show warning toast if using fallback
                   if (!datasetId) {
