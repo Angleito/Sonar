@@ -211,6 +211,85 @@ export class DatasetRepository {
   }
 
   /**
+   * Create dataset from blockchain data with pending metadata
+   * Used when PendingMetadata queue has user-submitted metadata
+   */
+  async createFromBlockchainWithMetadata(
+    id: string,
+    onChainData: {
+      creator: string;
+      quality_score: number;
+      price: bigint;
+      listed: boolean;
+      duration_seconds: number;
+    },
+    pendingMeta: {
+      metadata?: { title?: string; description?: string; languages?: string[]; tags?: string[] } | null;
+      verification?: { transcript?: string; analysis?: any; quality_breakdown?: any; transcription_details?: any } | null;
+      files?: Array<{ file_index: number; blob_id: string; preview_blob_id?: string; seal_policy_id: string; duration_seconds: number; mime_type: string; preview_mime_type?: string }>;
+    }
+  ) {
+    const metadata = pendingMeta.metadata;
+    const verification = pendingMeta.verification;
+    const files = pendingMeta.files || [];
+
+    // Create dataset with full metadata
+    await this.prisma.dataset.create({
+      data: {
+        id,
+        creator: onChainData.creator,
+        quality_score: onChainData.quality_score,
+        price: onChainData.price,
+        listed: onChainData.listed,
+        duration_seconds: onChainData.duration_seconds,
+        languages: metadata?.languages || [],
+        formats: ["audio/mpeg"],
+        media_type: "audio",
+        title: metadata?.title || "Audio Dataset",
+        description: metadata?.description || "",
+        tags: metadata?.tags || [],
+        transcript: verification?.transcript || null,
+        analysis: verification?.analysis || null,
+        quality_breakdown: verification?.quality_breakdown || null,
+        transcription_details: verification?.transcription_details || null,
+        transcript_length: verification?.transcript?.length || null,
+        file_count: files.length || 1,
+        seal_policy_id: files[0]?.seal_policy_id || null,
+        total_purchases: 0,
+        blockchain_synced_at: new Date(),
+        metadata_updated_at: new Date(),
+      },
+      include: {
+        blobs: true,
+      },
+    });
+
+    // Create blob records if files provided
+    if (files.length > 0) {
+      for (const file of files) {
+        await this.prisma.datasetBlob.create({
+          data: {
+            dataset_id: id,
+            file_index: file.file_index,
+            full_blob_id: file.blob_id,
+            preview_blob_id: file.preview_blob_id || "",
+            seal_policy_id: file.seal_policy_id,
+            duration_seconds: file.duration_seconds,
+            mime_type: file.mime_type || "audio/mpeg",
+            preview_mime_type: file.preview_mime_type || null,
+          },
+        });
+      }
+    }
+
+    // Return with blobs
+    return this.prisma.dataset.findUnique({
+      where: { id },
+      include: { blobs: true },
+    });
+  }
+
+  /**
    * Get paginated datasets
    */
   async getDatasetsPaginated(filter: DatasetFilter & { cursor?: string; limit?: number }) {

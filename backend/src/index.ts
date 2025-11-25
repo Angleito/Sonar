@@ -12,6 +12,11 @@ import { logger } from './lib/logger';
 import { prisma } from './lib/db';
 import { startDatasetIndexer } from './services/dataset-indexer-cron';
 
+// Enable BigInt JSON serialization (converts to string)
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
 declare global {
 namespace NodeJS {
 interface ProcessEnv {

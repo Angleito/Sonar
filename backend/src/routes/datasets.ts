@@ -16,6 +16,7 @@
 import type { FastifyInstance } from 'fastify';
 import { DatasetRepository } from '../services/dataset-repository';
 import { fetchDatasetFromBlockchain } from '../services/dataset-service';
+import { prisma } from '../lib/db';
 
 const repository = new DatasetRepository();
 
@@ -106,7 +107,7 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
 
   /**
    * GET /api/datasets/:id
-   * Get single dataset (with blockchain fallback)
+   * Get single dataset (with blockchain fallback + pending metadata)
    */
   fastify.get<{
     Params: { id: string };
@@ -123,7 +124,27 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
-            dataset = await repository.createFromBlockchain(id, onChainData);
+            // Check if there's pending metadata from the upload flow
+            const pendingMeta = await prisma.pendingMetadata.findFirst({
+              where: { dataset_id: id }
+            });
+
+            if (pendingMeta) {
+              request.log.info({ datasetId: id }, 'Found pending metadata, using for dataset creation');
+              dataset = await repository.createFromBlockchainWithMetadata(id, onChainData, {
+                metadata: pendingMeta.metadata as any,
+                verification: pendingMeta.verification as any,
+                files: pendingMeta.files as any,
+              });
+
+              // Mark pending metadata as completed since we've used it
+              await prisma.pendingMetadata.update({
+                where: { id: pendingMeta.id },
+                data: { status: 'completed', completed_at: new Date() }
+              });
+            } else {
+              dataset = await repository.createFromBlockchain(id, onChainData);
+            }
             request.log.info({ datasetId: id }, 'Dataset created from blockchain fallback');
           }
         } catch (fallbackError) {
@@ -169,7 +190,27 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
-            backendDataset = await repository.createFromBlockchain(id, onChainData);
+            // Check if there's pending metadata from the upload flow
+            const pendingMeta = await prisma.pendingMetadata.findFirst({
+              where: { dataset_id: id }
+            });
+
+            if (pendingMeta) {
+              request.log.info({ datasetId: id }, 'Found pending metadata, using for dataset creation');
+              backendDataset = await repository.createFromBlockchainWithMetadata(id, onChainData, {
+                metadata: pendingMeta.metadata as any,
+                verification: pendingMeta.verification as any,
+                files: pendingMeta.files as any,
+              });
+
+              // Mark pending metadata as completed since we've used it
+              await prisma.pendingMetadata.update({
+                where: { id: pendingMeta.id },
+                data: { status: 'completed', completed_at: new Date() }
+              });
+            } else {
+              backendDataset = await repository.createFromBlockchain(id, onChainData);
+            }
             request.log.info({ datasetId: id }, 'Dataset created from blockchain fallback');
           }
         } catch (fallbackError) {
