@@ -32,8 +32,11 @@ export default function DatasetDetailPage() {
       <main className="relative min-h-screen">
         <SonarBackground opacity={0.2} intensity={0.4} />
         <div className="relative z-10 container mx-auto px-6 py-12">
-          <div className="flex justify-center items-center min-h-[60vh]">
+          <div className="flex flex-col justify-center items-center min-h-[60vh] gap-4">
             <LoadingSpinner />
+            <p className="text-sonar-highlight-bright/70 text-sm">
+              Loading dataset...
+            </p>
           </div>
         </div>
       </main>

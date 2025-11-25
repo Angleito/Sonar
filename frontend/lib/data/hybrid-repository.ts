@@ -67,6 +67,15 @@ export class HybridRepository implements DataRepository {
     try {
       const response = await fetch(`${BACKEND_URL}/api/datasets/${dataset.id}`);
 
+      // Handle 202 (processing) - throw error to trigger retry
+      if (response.status === 202) {
+        const data = await response.json();
+        const error = new Error(data.message || 'Dataset is processing') as Error & { status: number; retryAfter: number };
+        error.status = 202;
+        error.retryAfter = data.retryAfter || 3;
+        throw error;
+      }
+
       if (!response.ok) {
         // Backend might not have this dataset yet (newly created)
         if (response.status === 404) {

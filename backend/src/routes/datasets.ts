@@ -16,7 +16,6 @@
 import type { FastifyInstance } from 'fastify';
 import { DatasetRepository } from '../services/dataset-repository';
 import { fetchDatasetFromBlockchain } from '../services/dataset-service';
-import { findDatasetIdFromTxDigest } from '../services/metadata-processor';
 import { prisma } from '../lib/db';
 
 const repository = new DatasetRepository();
@@ -125,34 +124,28 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
-            // Check if there's pending metadata from the upload flow
+            // Check for pending metadata by creator address + recency
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+            // First try direct lookup by dataset_id
             let pendingMeta = await prisma.pendingMetadata.findFirst({
               where: { dataset_id: id }
             });
 
-            // Fallback: search by tx_digest if not found by dataset_id
-            // (metadata was stored with "pending:txDigest" before resolution)
+            // Fallback: match by creator address (handles pending:txDigest case)
             if (!pendingMeta) {
-              const pendingRecords = await prisma.pendingMetadata.findMany({
+              pendingMeta = await prisma.pendingMetadata.findFirst({
                 where: {
                   dataset_id: { startsWith: 'pending:' },
-                  status: { in: ['pending', 'processing'] }
-                }
+                  status: { in: ['pending', 'processing'] },
+                  user_address: onChainData.creator,
+                  created_at: { gte: fiveMinutesAgo }
+                },
+                orderBy: { created_at: 'desc' }
               });
 
-              for (const record of pendingRecords) {
-                if (record.tx_digest) {
-                  const resolvedId = await findDatasetIdFromTxDigest(record.tx_digest);
-                  if (resolvedId === id) {
-                    pendingMeta = record;
-                    await prisma.pendingMetadata.update({
-                      where: { id: record.id },
-                      data: { dataset_id: id }
-                    });
-                    request.log.info({ datasetId: id, txDigest: record.tx_digest }, 'Resolved pending metadata by txDigest');
-                    break;
-                  }
-                }
+              if (pendingMeta) {
+                request.log.info({ datasetId: id, userAddress: pendingMeta.user_address }, 'Matched pending metadata by creator address');
               }
             }
 
@@ -164,15 +157,36 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 files: pendingMeta.files as any,
               });
 
-              // Mark pending metadata as completed since we've used it
+              // Mark pending metadata as completed and update dataset_id
               await prisma.pendingMetadata.update({
                 where: { id: pendingMeta.id },
-                data: { status: 'completed', completed_at: new Date() }
+                data: { dataset_id: id, status: 'completed', completed_at: new Date() }
               });
+              request.log.info({ datasetId: id }, 'Dataset created with full metadata');
             } else {
+              // Check if there's ANY recent pending record for this creator (still processing)
+              const anyPending = await prisma.pendingMetadata.findFirst({
+                where: {
+                  user_address: onChainData.creator,
+                  status: { in: ['pending', 'processing'] },
+                  created_at: { gte: fiveMinutesAgo }
+                }
+              });
+
+              if (anyPending) {
+                // Metadata is still being processed - tell frontend to wait and retry
+                request.log.info({ datasetId: id, creator: onChainData.creator }, 'Metadata still processing, returning 202');
+                return reply.code(202).send({
+                  status: 'processing',
+                  message: 'Dataset metadata is still being processed',
+                  retryAfter: 3
+                });
+              }
+
+              // No pending metadata - create with placeholder (old behavior)
               dataset = await repository.createFromBlockchain(id, onChainData);
+              request.log.info({ datasetId: id }, 'Dataset created with placeholder data');
             }
-            request.log.info({ datasetId: id }, 'Dataset created from blockchain fallback');
           }
         } catch (fallbackError) {
           request.log.warn({ datasetId: id, error: fallbackError }, 'Blockchain fallback failed');
@@ -217,34 +231,28 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
-            // Check if there's pending metadata from the upload flow
+            // Check for pending metadata by creator address + recency
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+            // First try direct lookup by dataset_id
             let pendingMeta = await prisma.pendingMetadata.findFirst({
               where: { dataset_id: id }
             });
 
-            // Fallback: search by tx_digest if not found by dataset_id
-            // (metadata was stored with "pending:txDigest" before resolution)
+            // Fallback: match by creator address (handles pending:txDigest case)
             if (!pendingMeta) {
-              const pendingRecords = await prisma.pendingMetadata.findMany({
+              pendingMeta = await prisma.pendingMetadata.findFirst({
                 where: {
                   dataset_id: { startsWith: 'pending:' },
-                  status: { in: ['pending', 'processing'] }
-                }
+                  status: { in: ['pending', 'processing'] },
+                  user_address: onChainData.creator,
+                  created_at: { gte: fiveMinutesAgo }
+                },
+                orderBy: { created_at: 'desc' }
               });
 
-              for (const record of pendingRecords) {
-                if (record.tx_digest) {
-                  const resolvedId = await findDatasetIdFromTxDigest(record.tx_digest);
-                  if (resolvedId === id) {
-                    pendingMeta = record;
-                    await prisma.pendingMetadata.update({
-                      where: { id: record.id },
-                      data: { dataset_id: id }
-                    });
-                    request.log.info({ datasetId: id, txDigest: record.tx_digest }, 'Resolved pending metadata by txDigest');
-                    break;
-                  }
-                }
+              if (pendingMeta) {
+                request.log.info({ datasetId: id, userAddress: pendingMeta.user_address }, 'Matched pending metadata by creator address');
               }
             }
 
@@ -256,15 +264,36 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 files: pendingMeta.files as any,
               });
 
-              // Mark pending metadata as completed since we've used it
+              // Mark pending metadata as completed and update dataset_id
               await prisma.pendingMetadata.update({
                 where: { id: pendingMeta.id },
-                data: { status: 'completed', completed_at: new Date() }
+                data: { dataset_id: id, status: 'completed', completed_at: new Date() }
               });
+              request.log.info({ datasetId: id }, 'Dataset created with full metadata');
             } else {
+              // Check if there's ANY recent pending record for this creator (still processing)
+              const anyPending = await prisma.pendingMetadata.findFirst({
+                where: {
+                  user_address: onChainData.creator,
+                  status: { in: ['pending', 'processing'] },
+                  created_at: { gte: fiveMinutesAgo }
+                }
+              });
+
+              if (anyPending) {
+                // Metadata is still being processed - tell frontend to wait and retry
+                request.log.info({ datasetId: id, creator: onChainData.creator }, 'Metadata still processing, returning 202');
+                return reply.code(202).send({
+                  status: 'processing',
+                  message: 'Dataset metadata is still being processed',
+                  retryAfter: 3
+                });
+              }
+
+              // No pending metadata - create with placeholder (old behavior)
               backendDataset = await repository.createFromBlockchain(id, onChainData);
+              request.log.info({ datasetId: id }, 'Dataset created with placeholder data');
             }
-            request.log.info({ datasetId: id }, 'Dataset created from blockchain fallback');
           }
         } catch (fallbackError) {
           request.log.warn({ datasetId: id, error: fallbackError }, 'Blockchain fallback failed');

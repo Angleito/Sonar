@@ -105,13 +105,19 @@ export function useDataset(datasetId: string) {
     staleTime: 5 * 60_000, // 5 minutes (individual datasets change less frequently)
     refetchOnWindowFocus: false, // Don't refetch on focus for detail pages
     retry: (failureCount, error) => {
-      // Bail out on 404 errors to prevent redundant retries
       const err = error as Error & { status?: number };
-      if (err.status === 404) {
-        return false;
-      }
+      // Don't retry on 404
+      if (err.status === 404) return false;
+      // Retry on 202 (processing) up to 10 times (~30 seconds total)
+      if (err.status === 202) return failureCount < 10;
       // Retry up to 2 times for other errors
       return failureCount < 2;
+    },
+    retryDelay: (attemptIndex, error) => {
+      const err = error as Error & { status?: number; retryAfter?: number };
+      // Use server-provided retry delay for 202 (processing), else exponential backoff
+      if (err.status === 202) return (err.retryAfter || 3) * 1000;
+      return Math.min(1000 * 2 ** attemptIndex, 10000);
     },
     initialData: () => {
       // Try to reuse data from the datasets list query to avoid redundant fetches
