@@ -314,31 +314,50 @@ export async function queueMetadataForProcessing(options: {
 }): Promise<void> {
   const prisma = options.prismaClient || defaultPrisma;
 
-  await prisma.pendingMetadata.upsert({
-    where: { dataset_id: options.datasetId },
-    create: {
-      dataset_id: options.datasetId,
-      user_address: options.userAddress,
-      files: options.files as any,
-      verification: options.verification || null,
-      metadata: options.metadata || null,
-      tx_digest: options.txDigest,
-      status: "pending",
-      next_retry_at: new Date(),
-    },
-    update: {
-      files: options.files as any,
-      verification: options.verification || null,
-      metadata: options.metadata || null,
-      status: "pending",
-      attempts: 0,
-      last_error: null,
-      next_retry_at: new Date(),
-    },
-  });
+  try {
+    const result = await prisma.pendingMetadata.upsert({
+      where: { dataset_id: options.datasetId },
+      create: {
+        dataset_id: options.datasetId,
+        user_address: options.userAddress,
+        files: options.files as any,
+        verification: options.verification || null,
+        metadata: options.metadata || null,
+        tx_digest: options.txDigest,
+        status: "pending",
+        next_retry_at: new Date(),
+      },
+      update: {
+        files: options.files as any,
+        verification: options.verification || null,
+        metadata: options.metadata || null,
+        tx_digest: options.txDigest, // Critical: update tx_digest on upsert!
+        status: "pending",
+        attempts: 0,
+        last_error: null,
+        next_retry_at: new Date(),
+      },
+    });
 
-  logger.info(
-    { datasetId: options.datasetId, userAddress: options.userAddress },
-    "Metadata queued for background processing"
-  );
+    logger.info(
+      {
+        datasetId: options.datasetId,
+        dbId: result.id,
+        status: result.status,
+        hasTxDigest: !!result.tx_digest,
+        createdAt: result.created_at,
+      },
+      "Metadata successfully saved to database"
+    );
+  } catch (error) {
+    logger.error(
+      {
+        datasetId: options.datasetId,
+        userAddress: options.userAddress,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "CRITICAL: Failed to save metadata to database"
+    );
+    throw error; // Re-throw so the endpoint returns 500
+  }
 }
