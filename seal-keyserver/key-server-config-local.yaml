@@ -1,0 +1,28 @@
+# SEAL Key Server Configuration - Local Testing
+# This is a local-only config for deriving the public key
+
+# Sui network configuration
+network: Testnet
+
+# Server mode: Permissioned (only SONAR package can request keys)
+server_mode: !Permissioned
+  client_configs:
+    # SONAR Marketplace Configuration
+    - name: "SONAR Marketplace"
+
+      # Dummy key server object ID for local testing (will be replaced after on-chain registration)
+      key_server_object_id: "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+      # Allowed package IDs (only these can request derived keys)
+      package_ids:
+        # SONAR package ID (upgraded testnet version - Nov 2025)
+        - "0x7375bdf0438c9430cb230a5ac0a278d1cba97dd991a2635a29055ce75825a7f4"
+
+      # Client master key derivation
+      # Uses MASTER_KEY environment variable with derivation_index 0
+      client_master_key: !Derived
+        derivation_index: 0
+
+# Optional: Prometheus metrics endpoint
+# Exposed on port 9184 for monitoring
+metrics_host_port: 9184

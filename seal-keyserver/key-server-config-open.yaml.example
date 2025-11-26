@@ -1,0 +1,16 @@
+# =============================================================================
+# SEAL Key Server Configuration Template - OPEN MODE (for setup/derivation)
+# =============================================================================
+# This template is used during setup to derive the PUBLIC_KEY
+# Once you have the KEY_SERVER_OBJECT_ID, switch to the Permissioned template
+
+# Sui network configuration
+network: Mainnet
+
+# Server mode: Open (accepts all packages during setup)
+# The key_server_object_id placeholder will be replaced if provided
+server_mode: !Open
+  key_server_object_id: "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+# Optional: Prometheus metrics endpoint
+metrics_host_port: 9184
