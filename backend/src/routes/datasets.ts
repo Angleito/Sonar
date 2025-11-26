@@ -124,30 +124,41 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
-            // Check for pending metadata by creator address + recency
+            // Check for pending metadata with retry loop to handle race condition
+            // where POST hasn't committed yet when GET runs
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            let pendingMeta = null;
 
-            // First try direct lookup by dataset_id (case-insensitive for Sui object IDs)
-            let pendingMeta = await prisma.pendingMetadata.findFirst({
-              where: { dataset_id: { equals: id, mode: 'insensitive' } }
-            });
-
-            // Fallback: match by creator address for recent uploads from this user
-            if (!pendingMeta) {
+            for (let attempt = 0; attempt < 3; attempt++) {
+              // First try direct lookup by dataset_id (case-insensitive for Sui object IDs)
               pendingMeta = await prisma.pendingMetadata.findFirst({
-                where: {
-                  status: { in: ['pending', 'processing'] },
-                  user_address: {
-                    equals: onChainData.creator,
-                    mode: 'insensitive'
-                  },
-                  created_at: { gte: fiveMinutesAgo }
-                },
-                orderBy: { created_at: 'desc' }
+                where: { dataset_id: { equals: id, mode: 'insensitive' } }
               });
 
+              // Fallback: match by creator address for recent uploads from this user
+              if (!pendingMeta) {
+                pendingMeta = await prisma.pendingMetadata.findFirst({
+                  where: {
+                    status: { in: ['pending', 'processing'] },
+                    user_address: {
+                      equals: onChainData.creator,
+                      mode: 'insensitive'
+                    },
+                    created_at: { gte: fiveMinutesAgo }
+                  },
+                  orderBy: { created_at: 'desc' }
+                });
+              }
+
               if (pendingMeta) {
-                request.log.info({ datasetId: id, userAddress: pendingMeta.user_address }, 'Matched pending metadata by creator address');
+                request.log.info({ datasetId: id, attempt, foundBy: pendingMeta.dataset_id === id ? 'direct' : 'creator' }, 'Found pending metadata');
+                break;
+              }
+
+              // Wait briefly for concurrent POST to commit (race condition handling)
+              if (attempt < 2) {
+                request.log.debug({ datasetId: id, attempt }, 'Pending metadata not found, retrying after delay');
+                await new Promise(resolve => setTimeout(resolve, 500));
               }
             }
 
@@ -219,30 +230,41 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
-            // Check for pending metadata by creator address + recency
+            // Check for pending metadata with retry loop to handle race condition
+            // where POST hasn't committed yet when GET runs
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            let pendingMeta = null;
 
-            // First try direct lookup by dataset_id (case-insensitive for Sui object IDs)
-            let pendingMeta = await prisma.pendingMetadata.findFirst({
-              where: { dataset_id: { equals: id, mode: 'insensitive' } }
-            });
-
-            // Fallback: match by creator address for recent uploads from this user
-            if (!pendingMeta) {
+            for (let attempt = 0; attempt < 3; attempt++) {
+              // First try direct lookup by dataset_id (case-insensitive for Sui object IDs)
               pendingMeta = await prisma.pendingMetadata.findFirst({
-                where: {
-                  status: { in: ['pending', 'processing'] },
-                  user_address: {
-                    equals: onChainData.creator,
-                    mode: 'insensitive'
-                  },
-                  created_at: { gte: fiveMinutesAgo }
-                },
-                orderBy: { created_at: 'desc' }
+                where: { dataset_id: { equals: id, mode: 'insensitive' } }
               });
 
+              // Fallback: match by creator address for recent uploads from this user
+              if (!pendingMeta) {
+                pendingMeta = await prisma.pendingMetadata.findFirst({
+                  where: {
+                    status: { in: ['pending', 'processing'] },
+                    user_address: {
+                      equals: onChainData.creator,
+                      mode: 'insensitive'
+                    },
+                    created_at: { gte: fiveMinutesAgo }
+                  },
+                  orderBy: { created_at: 'desc' }
+                });
+              }
+
               if (pendingMeta) {
-                request.log.info({ datasetId: id, userAddress: pendingMeta.user_address }, 'Matched pending metadata by creator address');
+                request.log.info({ datasetId: id, attempt, foundBy: pendingMeta.dataset_id === id ? 'direct' : 'creator' }, 'Found pending metadata');
+                break;
+              }
+
+              // Wait briefly for concurrent POST to commit (race condition handling)
+              if (attempt < 2) {
+                request.log.debug({ datasetId: id, attempt }, 'Pending metadata not found, retrying after delay');
+                await new Promise(resolve => setTimeout(resolve, 500));
               }
             }
 
