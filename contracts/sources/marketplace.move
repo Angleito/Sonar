@@ -702,8 +702,8 @@ module sonar::marketplace {
             seal_policy_id: seal_policy_id,
             preview_blob_hash,
             duration_seconds,
-            quality_score: 0,  // Set by validator
-            status: 0,         // 0 = pending
+            quality_score: 50,       // Default score (auto-approved)
+            status: 1,               // 1 = approved (auto-approve on upload)
             vested_balance: VestedBalance {
                 total_amount: 0,
                 unlock_start_epoch: 0,
@@ -711,8 +711,8 @@ module sonar::marketplace {
                 claimed_amount: 0
             },
             unlocked_balance: 0,
-            dataset_price: 0,
-            listed_for_sale: false,
+            dataset_price: fee_paid, // Use submission fee as initial price
+            listed_for_sale: true,   // Auto-list on upload
             purchase_count: 0,
             submitted_at_epoch: tx_context::epoch(ctx)
         };
@@ -814,8 +814,8 @@ module sonar::marketplace {
             total_duration,
             file_count,
             bundle_discount_bps,
-            quality_score: 0,       // Set by validator
-            status: 0,              // 0 = pending
+            quality_score: 50,       // Default score (auto-approved)
+            status: 1,               // 1 = approved (auto-approve on upload)
             vested_balance: VestedBalance {
                 total_amount: 0,
                 unlock_start_epoch: 0,
@@ -823,8 +823,8 @@ module sonar::marketplace {
                 claimed_amount: 0
             },
             unlocked_balance: 0,
-            dataset_price: 0,
-            listed_for_sale: false,
+            dataset_price: fee_paid, // Use submission fee as initial price
+            listed_for_sale: true,   // Auto-list on upload
             purchase_count: 0,
             submitted_at_epoch: tx_context::epoch(ctx)
         };

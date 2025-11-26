@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSignAndExecuteTransaction, useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
 import type { Dataset } from '@/types/blockchain';
-import { CHAIN_CONFIG, SONAR_COIN_TYPE } from '@/lib/sui/client';
+import { CHAIN_CONFIG } from '@/lib/sui/client';
 import { collectCoinsForAmount, prepareCoinPayment } from '@/lib/sui/coin-utils';
 import { clearPurchaseCacheEntry } from '@/lib/sui/purchase-verification';
 
@@ -98,10 +98,6 @@ export function usePurchase(): UsePurchaseReturn {
         );
       }
 
-      if (!SONAR_COIN_TYPE) {
-        throw new Error('SONAR coin type is not configured.');
-      }
-
       const requiredAmount = dataset.price;
 
       if (requiredAmount <= 0n) {
@@ -113,12 +109,12 @@ export function usePurchase(): UsePurchaseReturn {
       const { coins, total } = await collectCoinsForAmount(
         suiClient,
         accountAddress,
-        SONAR_COIN_TYPE,
+        '0x2::sui::SUI',
         requiredAmount
       );
 
       if (total < requiredAmount) {
-        throw new Error('Insufficient SONAR balance. Acquire SNR first.');
+        throw new Error('Insufficient SUI balance.');
       }
 
       // Build transaction
@@ -140,9 +136,9 @@ export function usePurchase(): UsePurchaseReturn {
         buyer: currentAccount.address,
       });
 
-      // Sign and execute transaction
+      // Sign and execute transaction - uses SUI with 60/40 split (uploader/platform)
       tx.moveCall({
-        target: `${CHAIN_CONFIG.packageId}::marketplace::purchase_dataset`,
+        target: `${CHAIN_CONFIG.packageId}::marketplace::purchase_dataset_with_sui`,
         arguments: [
           tx.object(CHAIN_CONFIG.marketplaceId),
           tx.object(dataset.id),
