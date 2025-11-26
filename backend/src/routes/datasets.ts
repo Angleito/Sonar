@@ -132,11 +132,10 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
               where: { dataset_id: id }
             });
 
-            // Fallback: match by creator address (handles pending:txDigest case)
+            // Fallback: match by creator address for recent uploads from this user
             if (!pendingMeta) {
               pendingMeta = await prisma.pendingMetadata.findFirst({
                 where: {
-                  dataset_id: { startsWith: 'pending:' },
                   status: { in: ['pending', 'processing'] },
                   user_address: {
                     equals: onChainData.creator,
@@ -228,11 +227,10 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
               where: { dataset_id: id }
             });
 
-            // Fallback: match by creator address (handles pending:txDigest case)
+            // Fallback: match by creator address for recent uploads from this user
             if (!pendingMeta) {
               pendingMeta = await prisma.pendingMetadata.findFirst({
                 where: {
-                  dataset_id: { startsWith: 'pending:' },
                   status: { in: ['pending', 'processing'] },
                   user_address: {
                     equals: onChainData.creator,
