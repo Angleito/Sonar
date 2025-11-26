@@ -14,7 +14,7 @@ import {
   getDatasetPreviewStream,
   type FileSealMetadata,
 } from "../services/dataset-service";
-import { queueMetadataForProcessing } from "../services/metadata-processor";
+import { queueMetadataForProcessing, findDatasetIdFromTxDigest } from "../services/metadata-processor";
 import { isHttpError, toErrorResponse } from "../lib/errors";
 
 interface SealMetadataBody {
@@ -188,12 +188,40 @@ export async function registerDataRoutes(
           });
         }
 
+        // Try to resolve pending:txDigest to real datasetId immediately
+        // This improves the chance of matching on the first GET request
+        let resolvedDatasetId = datasetId;
+        if (isPending && txDigest) {
+          try {
+            const resolvedId = await findDatasetIdFromTxDigest(txDigest);
+            if (resolvedId) {
+              resolvedDatasetId = resolvedId;
+              request.log.info(
+                { resolvedId, txDigest: txDigest.slice(0, 20) },
+                "Resolved pending ID to real datasetId"
+              );
+            } else {
+              request.log.info(
+                { txDigest: txDigest.slice(0, 20) },
+                "Could not resolve pending ID yet, storing with pending: prefix"
+              );
+            }
+          } catch (err) {
+            request.log.warn(
+              { txDigest: txDigest.slice(0, 20), error: err },
+              "Failed to resolve pending ID, storing with pending: prefix"
+            );
+          }
+        }
+
         // DEBUG: Log full IDs to diagnose matching issues
         request.log.info(
           {
-            storedDatasetId: datasetId,
+            storedDatasetId: resolvedDatasetId,
+            originalDatasetId: datasetId,
             storedUserAddress: userAddress,
             isPending,
+            wasResolved: resolvedDatasetId !== datasetId,
             hasTxDigest: !!txDigest,
             txDigestFull: txDigest,
           },
@@ -203,7 +231,7 @@ export async function registerDataRoutes(
         // Queue for background processing instead of blocking
         // This handles RPC indexing lag gracefully
         await queueMetadataForProcessing({
-          datasetId,
+          datasetId: resolvedDatasetId, // Use resolved ID if available
           userAddress,
           files,
           verification,
@@ -212,7 +240,7 @@ export async function registerDataRoutes(
         });
 
         request.log.info(
-          { datasetId, fileCount: files.length },
+          { datasetId: resolvedDatasetId, fileCount: files.length },
           "Metadata queued for background processing"
         );
 
@@ -220,7 +248,7 @@ export async function registerDataRoutes(
         return reply.code(202).send({
           success: true,
           queued: true,
-          datasetId,
+          datasetId: resolvedDatasetId,
           fileCount: files.length,
           message: "Metadata queued for processing. Dataset will be available shortly.",
         });

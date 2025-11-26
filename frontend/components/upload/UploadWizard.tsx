@@ -269,6 +269,19 @@ export function UploadWizard({ open, onOpenChange, fullscreen = false }: UploadW
         const parsed = JSON.parse(savedState);
         console.log('[UploadWizard] ✅ Restored state from localStorage, step:', parsed.step);
         console.log('[UploadWizard] 🔍 Keys in parsed state:', Object.keys(parsed));
+
+        // Check if saved state has expired (30 minutes)
+        const MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+        const savedAt = parsed.savedAt || 0;
+        const age = Date.now() - savedAt;
+        if (age > MAX_AGE_MS) {
+          console.warn(`[UploadWizard] ⚠️ Saved state expired (${Math.round(age / 60000)} min old > 30 min), clearing`);
+          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem('pending_uploads');
+          return;
+        }
+        console.log(`[UploadWizard] ⏰ State age: ${Math.round(age / 60000)} min (within 30 min limit)`);
+
         // Only restore verification and publish steps (long-running processes)
         // File-upload and metadata steps always start fresh (file data can't be restored from localStorage)
         // Note: We can't restore full file data, user will need to re-upload
@@ -344,7 +357,10 @@ export function UploadWizard({ open, onOpenChange, fullscreen = false }: UploadW
     }
 
     try {
-      const serialized = serializeState(state);
+      const serialized = {
+        ...serializeState(state),
+        savedAt: Date.now(), // Add timestamp for expiry check
+      };
       const stateJson = JSON.stringify(serialized);
       const sizeMB = (stateJson.length / 1024 / 1024).toFixed(2);
       console.log(`[UploadWizard] 💾 Attempting to save state, size: ${stateJson.length} bytes (${sizeMB} MB)`);

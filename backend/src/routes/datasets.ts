@@ -173,8 +173,31 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 }, "Creator fallback lookup result");
               }
 
+              // Third fallback: match by tx_digest for recent transactions
+              // This handles the case where dataset_id differs (pending:txDigest vs real ID)
+              if (!pendingMeta) {
+                pendingMeta = await prisma.pendingMetadata.findFirst({
+                  where: {
+                    status: { in: ['pending', 'processing'] },
+                    tx_digest: { not: null },
+                    created_at: { gte: fiveMinutesAgo }
+                  },
+                  orderBy: { created_at: 'desc' }
+                });
+
+                if (pendingMeta) {
+                  request.log.info({
+                    attempt,
+                    foundByTxDigest: pendingMeta.tx_digest,
+                    storedDatasetId: pendingMeta.dataset_id,
+                  }, "Found pending metadata via tx_digest fallback");
+                }
+              }
+
               if (pendingMeta) {
-                request.log.info({ datasetId: id, attempt, foundBy: pendingMeta.dataset_id === id ? 'direct' : 'creator' }, 'Found pending metadata');
+                const foundBy = pendingMeta.dataset_id === id ? 'direct' :
+                               pendingMeta.user_address?.toLowerCase() === onChainData.creator?.toLowerCase() ? 'creator' : 'tx_digest';
+                request.log.info({ datasetId: id, attempt, foundBy }, 'Found pending metadata');
                 break;
               }
 
@@ -299,8 +322,30 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 }, "[/full] Creator fallback lookup result");
               }
 
+              // Third fallback: match by tx_digest for recent transactions
+              if (!pendingMeta) {
+                pendingMeta = await prisma.pendingMetadata.findFirst({
+                  where: {
+                    status: { in: ['pending', 'processing'] },
+                    tx_digest: { not: null },
+                    created_at: { gte: fiveMinutesAgo }
+                  },
+                  orderBy: { created_at: 'desc' }
+                });
+
+                if (pendingMeta) {
+                  request.log.info({
+                    attempt,
+                    foundByTxDigest: pendingMeta.tx_digest,
+                    storedDatasetId: pendingMeta.dataset_id,
+                  }, "[/full] Found pending metadata via tx_digest fallback");
+                }
+              }
+
               if (pendingMeta) {
-                request.log.info({ datasetId: id, attempt, foundBy: pendingMeta.dataset_id === id ? 'direct' : 'creator' }, 'Found pending metadata');
+                const foundBy = pendingMeta.dataset_id === id ? 'direct' :
+                               pendingMeta.user_address?.toLowerCase() === onChainData.creator?.toLowerCase() ? 'creator' : 'tx_digest';
+                request.log.info({ datasetId: id, attempt, foundBy }, 'Found pending metadata');
                 break;
               }
 
