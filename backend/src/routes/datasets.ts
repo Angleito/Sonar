@@ -16,6 +16,7 @@
 import type { FastifyInstance } from 'fastify';
 import { DatasetRepository } from '../services/dataset-repository';
 import { fetchDatasetFromBlockchain } from '../services/dataset-service';
+import { findTxDigestFromDatasetId } from '../services/metadata-processor';
 import { prisma } from '../lib/db';
 
 const repository = new DatasetRepository();
@@ -194,9 +195,31 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 }
               }
 
+              // Fourth fallback: Look up txDigest from blockchain, then match pending_metadata
+              // This is the most reliable - uses the actual creation transaction
+              if (!pendingMeta) {
+                const txDigestFromChain = await findTxDigestFromDatasetId(id);
+                if (txDigestFromChain) {
+                  pendingMeta = await prisma.pendingMetadata.findFirst({
+                    where: {
+                      tx_digest: txDigestFromChain,
+                      status: { in: ['pending', 'processing'] },
+                    }
+                  });
+
+                  if (pendingMeta) {
+                    request.log.info({
+                      attempt,
+                      foundByChainTxDigest: txDigestFromChain,
+                      storedDatasetId: pendingMeta.dataset_id,
+                    }, "Found pending metadata via blockchain txDigest lookup");
+                  }
+                }
+              }
+
               if (pendingMeta) {
                 const foundBy = pendingMeta.dataset_id === id ? 'direct' :
-                               pendingMeta.user_address?.toLowerCase() === onChainData.creator?.toLowerCase() ? 'creator' : 'tx_digest';
+                               pendingMeta.user_address?.toLowerCase() === onChainData.creator?.toLowerCase() ? 'creator' : 'chainTxDigest';
                 request.log.info({ datasetId: id, attempt, foundBy }, 'Found pending metadata');
                 break;
               }
@@ -342,9 +365,30 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                 }
               }
 
+              // Fourth fallback: Look up txDigest from blockchain, then match pending_metadata
+              if (!pendingMeta) {
+                const txDigestFromChain = await findTxDigestFromDatasetId(id);
+                if (txDigestFromChain) {
+                  pendingMeta = await prisma.pendingMetadata.findFirst({
+                    where: {
+                      tx_digest: txDigestFromChain,
+                      status: { in: ['pending', 'processing'] },
+                    }
+                  });
+
+                  if (pendingMeta) {
+                    request.log.info({
+                      attempt,
+                      foundByChainTxDigest: txDigestFromChain,
+                      storedDatasetId: pendingMeta.dataset_id,
+                    }, "[/full] Found pending metadata via blockchain txDigest lookup");
+                  }
+                }
+              }
+
               if (pendingMeta) {
                 const foundBy = pendingMeta.dataset_id === id ? 'direct' :
-                               pendingMeta.user_address?.toLowerCase() === onChainData.creator?.toLowerCase() ? 'creator' : 'tx_digest';
+                               pendingMeta.user_address?.toLowerCase() === onChainData.creator?.toLowerCase() ? 'creator' : 'chainTxDigest';
                 request.log.info({ datasetId: id, attempt, foundBy }, 'Found pending metadata');
                 break;
               }

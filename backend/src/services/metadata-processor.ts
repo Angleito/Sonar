@@ -21,6 +21,41 @@ const BACKOFF_DELAYS = [
 const MAX_ATTEMPTS = 10;
 const BATCH_SIZE = 20;
 
+// Cache for txDigest lookups (datasetId → txDigest)
+const txDigestCache = new Map<string, { txDigest: string | null; cachedAt: number }>();
+const TX_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Find txDigest from a datasetId by querying the blockchain object
+ * Uses previousTransaction field which contains the creation tx digest
+ */
+export async function findTxDigestFromDatasetId(datasetId: string): Promise<string | null> {
+  // Check cache first
+  const cached = txDigestCache.get(datasetId);
+  if (cached && Date.now() - cached.cachedAt < TX_CACHE_TTL_MS) {
+    return cached.txDigest;
+  }
+
+  try {
+    const obj = await suiClient.getObject({
+      id: datasetId,
+      options: { showPreviousTransaction: true },
+    });
+
+    const txDigest = obj.data?.previousTransaction ?? null;
+    txDigestCache.set(datasetId, { txDigest, cachedAt: Date.now() });
+
+    if (txDigest) {
+      logger.info({ datasetId, txDigest }, "Found txDigest from datasetId");
+    }
+    return txDigest;
+  } catch (error) {
+    logger.error({ datasetId, error }, "Failed to query object for txDigest");
+    txDigestCache.set(datasetId, { txDigest: null, cachedAt: Date.now() });
+    return null;
+  }
+}
+
 /**
  * Find datasetId from a transaction digest by querying the blockchain
  * Replicates the frontend's 5-step extraction logic
