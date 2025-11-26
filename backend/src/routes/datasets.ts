@@ -127,9 +127,9 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
             // Check for pending metadata by creator address + recency
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-            // First try direct lookup by dataset_id
+            // First try direct lookup by dataset_id (case-insensitive for Sui object IDs)
             let pendingMeta = await prisma.pendingMetadata.findFirst({
-              where: { dataset_id: id }
+              where: { dataset_id: { equals: id, mode: 'insensitive' } }
             });
 
             // Fallback: match by creator address for recent uploads from this user
@@ -222,9 +222,9 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
             // Check for pending metadata by creator address + recency
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-            // First try direct lookup by dataset_id
+            // First try direct lookup by dataset_id (case-insensitive for Sui object IDs)
             let pendingMeta = await prisma.pendingMetadata.findFirst({
-              where: { dataset_id: id }
+              where: { dataset_id: { equals: id, mode: 'insensitive' } }
             });
 
             // Fallback: match by creator address for recent uploads from this user
