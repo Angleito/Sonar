@@ -188,9 +188,16 @@ export async function registerDataRoutes(
           });
         }
 
+        // DEBUG: Log full IDs to diagnose matching issues
         request.log.info(
-          { rawId, isPending, txDigest: txDigest?.slice(0, 20), hasDatasetId: !isPending },
-          "Processing seal-metadata request"
+          {
+            storedDatasetId: datasetId,
+            storedUserAddress: userAddress,
+            isPending,
+            hasTxDigest: !!txDigest,
+            txDigestFull: txDigest,
+          },
+          "Processing seal-metadata request - storing pending metadata"
         );
 
         // Queue for background processing instead of blocking
@@ -205,7 +212,7 @@ export async function registerDataRoutes(
         });
 
         request.log.info(
-          { datasetId, userAddress, fileCount: files.length },
+          { datasetId, fileCount: files.length },
           "Metadata queued for background processing"
         );
 

@@ -124,6 +124,12 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
+            // DEBUG: Log what we're looking for
+            request.log.info({
+              lookupId: id,
+              creatorFromChain: onChainData.creator,
+            }, "Looking up pending metadata for dataset");
+
             // Check for pending metadata with retry loop to handle race condition
             // where POST hasn't committed yet when GET runs
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -134,6 +140,15 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
               pendingMeta = await prisma.pendingMetadata.findFirst({
                 where: { dataset_id: { equals: id, mode: 'insensitive' } }
               });
+
+              // DEBUG: Log direct lookup result
+              request.log.info({
+                attempt,
+                directLookupFound: !!pendingMeta,
+                directLookupStoredId: pendingMeta?.dataset_id,
+                directLookupUserAddress: pendingMeta?.user_address?.slice(0, 20),
+                directLookupStatus: pendingMeta?.status,
+              }, "Direct lookup result");
 
               // Fallback: match by creator address for recent uploads from this user
               if (!pendingMeta) {
@@ -148,6 +163,14 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                   },
                   orderBy: { created_at: 'desc' }
                 });
+
+                // DEBUG: Log creator fallback result
+                request.log.info({
+                  attempt,
+                  creatorFallbackFound: !!pendingMeta,
+                  creatorFallbackStoredId: pendingMeta?.dataset_id,
+                  creatorFallbackUserAddress: pendingMeta?.user_address?.slice(0, 20),
+                }, "Creator fallback lookup result");
               }
 
               if (pendingMeta) {
@@ -230,6 +253,12 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
         try {
           const onChainData = await fetchDatasetFromBlockchain(id, request.log);
           if (onChainData) {
+            // DEBUG: Log what we're looking for
+            request.log.info({
+              lookupId: id,
+              creatorFromChain: onChainData.creator,
+            }, "[/full] Looking up pending metadata for dataset");
+
             // Check for pending metadata with retry loop to handle race condition
             // where POST hasn't committed yet when GET runs
             const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -240,6 +269,13 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
               pendingMeta = await prisma.pendingMetadata.findFirst({
                 where: { dataset_id: { equals: id, mode: 'insensitive' } }
               });
+
+              // DEBUG: Log direct lookup result
+              request.log.info({
+                attempt,
+                directLookupFound: !!pendingMeta,
+                directLookupStoredId: pendingMeta?.dataset_id,
+              }, "[/full] Direct lookup result");
 
               // Fallback: match by creator address for recent uploads from this user
               if (!pendingMeta) {
@@ -254,6 +290,13 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
                   },
                   orderBy: { created_at: 'desc' }
                 });
+
+                // DEBUG: Log creator fallback result
+                request.log.info({
+                  attempt,
+                  creatorFallbackFound: !!pendingMeta,
+                  creatorFallbackStoredId: pendingMeta?.dataset_id,
+                }, "[/full] Creator fallback lookup result");
               }
 
               if (pendingMeta) {
