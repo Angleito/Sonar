@@ -4,7 +4,7 @@ import testnetDeployment from "../../../contracts/deployments/testnet.json";
 import mainnetDeployment from "../../../contracts/deployments/mainnet.json";
 
 const MAINNET_PACKAGE_ID =
-  "0xbd1c0448ae39f8850c59ccf71fd2246e433cdf4b85280caf0da7fc48828b1659";
+  "0x1084073ffefdb80fac657daae2d60895fac976ab6b85196c0ce86bcbce51edf6";
 const MAINNET_MARKETPLACE_ID =
   "0xb1c467213d96d3b2de78124cf10deebcefe7e19093cbbaac3b368b604112e5b4";
 
