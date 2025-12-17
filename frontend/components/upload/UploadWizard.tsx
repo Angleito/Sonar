@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { cn } from '@/lib/utils';
 import { SonarBackground } from '@/components/animations/SonarBackground';
 import {
@@ -12,6 +14,7 @@ import {
   WalrusUploadResult,
   VerificationResult,
 } from '@/lib/types/upload';
+import type { Dataset } from '@/types/blockchain';
 import { SonarButton } from '@/components/ui/SonarButton';
 import { FileUploadStep } from './FileUploadStep';
 import { MetadataStep } from './MetadataStep';
@@ -57,6 +60,7 @@ const INITIAL_STATE: UploadWizardState = {
 };
 
 const STORAGE_KEY = 'sonar-upload-wizard-state';
+const FIXED_PRICE_PER_FILE_MIST = 250_000_000; // Fixed 0.25 SUI per file (contract minimum)
 
 /**
  * UploadWizard Component
@@ -65,6 +69,8 @@ const STORAGE_KEY = 'sonar-upload-wizard-state';
 export function UploadWizard({ open, onOpenChange, fullscreen = false }: UploadWizardProps) {
   const [state, setState] = useState<UploadWizardState>(INITIAL_STATE);
   const [persistenceDisabled, setPersistenceDisabled] = useState(false);
+  const queryClient = useQueryClient();
+  const account = useCurrentAccount();
 
   // Lifecycle logging
   console.log('[UploadWizard] 📊 Render:', {
@@ -132,6 +138,80 @@ export function UploadWizard({ open, onOpenChange, fullscreen = false }: UploadW
       updatedAt: verification.updatedAt,
       qualityBreakdown: verification.qualityBreakdown,
       transcriptionDetails: verification.transcriptionDetails,
+    };
+  };
+
+  const upsertDatasetInMarketplaceCache = (dataset: Dataset) => {
+    queryClient.setQueryData<Dataset>(['dataset', dataset.id], dataset);
+
+    queryClient.setQueriesData<Dataset[]>(
+      { queryKey: ['datasets'] },
+      (existing) => {
+        const existingList = Array.isArray(existing) ? existing : [];
+        const without = existingList.filter((d) => d.id !== dataset.id);
+        return [dataset, ...without];
+      },
+    );
+  };
+
+  const buildOptimisticDataset = (datasetId: string): Dataset | null => {
+    if (!state.walrusUpload || !state.metadata) return null;
+
+    const walrusUpload = state.walrusUpload;
+    const metadata = state.metadata;
+
+    const durations =
+      walrusUpload.files?.map((f) => Math.max(1, Math.floor(f.duration))) ?? [];
+    const durationSeconds =
+      durations.length > 0
+        ? durations.reduce((sum, value) => sum + value, 0)
+        : Math.max(
+            1,
+            Math.floor(state.audioFile?.duration ?? state.audioFiles?.[0]?.duration ?? 0),
+          );
+
+    const fileCount = walrusUpload.files?.length ? walrusUpload.files.length : 1;
+    const priceMist = fileCount >= 2
+      ? BigInt(Math.floor(FIXED_PRICE_PER_FILE_MIST * fileCount * 0.9))
+      : BigInt(FIXED_PRICE_PER_FILE_MIST * fileCount);
+
+    const previewBlobId =
+      walrusUpload.previewBlobId ??
+      walrusUpload.files?.[0]?.previewBlobId ??
+      undefined;
+    const mimeType =
+      walrusUpload.mimeType ?? walrusUpload.files?.[0]?.mimeType ?? 'audio/mpeg';
+    const previewMimeType =
+      walrusUpload.previewMimeType ??
+      walrusUpload.files?.[0]?.previewMimeType ??
+      null;
+
+    const now = Date.now();
+    return {
+      id: datasetId,
+      creator: account?.address ?? '0x0',
+      quality_score: 50,
+      price: priceMist,
+      listed: true,
+      duration_seconds: durationSeconds,
+      sample_count: fileCount,
+      storage_size: 0,
+      verified: true,
+      languages: metadata.languages ?? [],
+      formats: ['mp3'],
+      media_type: 'audio',
+      created_at: now,
+      updated_at: now,
+      title: metadata.title,
+      description: metadata.description,
+      total_purchases: 0,
+      preview_blob_id: previewBlobId,
+      walrus_blob_id: walrusUpload.blobId,
+      blob_id: walrusUpload.blobId,
+      seal_policy_id: walrusUpload.seal_policy_id,
+      mime_type: mimeType,
+      preview_mime_type: previewMimeType,
+      tags: metadata.tags ?? [],
     };
   };
 
@@ -620,6 +700,12 @@ export function UploadWizard({ open, onOpenChange, fullscreen = false }: UploadW
               metadata={state.metadata!}
               verification={state.verification!}
               onPublished={(publish) => {
+                if (publish.datasetId && !publish.datasetId.startsWith('pending:')) {
+                  const optimisticDataset = buildOptimisticDataset(publish.datasetId);
+                  if (optimisticDataset) {
+                    upsertDatasetInMarketplaceCache(optimisticDataset);
+                  }
+                }
                 setState((prev) => ({ ...prev, publish }));
                 goToNextStep();
               }}

@@ -36,6 +36,16 @@ interface BlockchainDataset {
   file_count?: number;
   total_duration?: number;
   bundle_discount_bps?: number;
+  seal_policy_id?: string | null;
+  blobs?: Array<{
+    file_index: number;
+    full_blob_id: string;
+    preview_blob_id: string;
+    seal_policy_id: string | null;
+    duration_seconds: number;
+    mime_type: string;
+    preview_mime_type: string | null;
+  }>;
 }
 
 export class BlockchainIndexer {
@@ -108,17 +118,55 @@ export class BlockchainIndexer {
 
       const datasets: BlockchainDataset[] = [];
 
+      const parseNumberLike = (value: unknown): number => {
+        if (typeof value === 'number') return value;
+        if (typeof value === 'bigint') return Number(value);
+        if (typeof value === 'string') {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+      };
+
       // Query AudioSubmission creation events to find object IDs
       // Note: SuiClient doesn't have queryObjects for StructType filtering
       // We use event-based discovery instead
-      const audioEventsResponse = await suiClient.queryEvents({
-        query: {
-          MoveEventType: `${SONAR_PACKAGE_ID}::marketplace::AudioSubmissionCreated`,
-        },
-        cursor: cursor ? { txDigest: cursor, eventSeq: '0' } : null,
-        limit: 25,
-        order: 'descending',
-      });
+      // NOTE: The Move event type is `SubmissionCreated` on-chain; `AudioSubmissionCreated` is a legacy name.
+      const audioEventTypes = [
+        `${SONAR_PACKAGE_ID}::marketplace::SubmissionCreated`,
+        `${SONAR_PACKAGE_ID}::marketplace::AudioSubmissionCreated`,
+      ];
+
+      let audioEventsResponse:
+        | Awaited<ReturnType<typeof suiClient.queryEvents>>
+        | null = null;
+
+      for (const eventType of audioEventTypes) {
+        try {
+          const response = await suiClient.queryEvents({
+            query: { MoveEventType: eventType },
+            cursor: cursor ? { txDigest: cursor, eventSeq: '0' } : null,
+            limit: 25,
+            order: 'descending',
+          });
+
+          audioEventsResponse = response;
+          // Prefer the first event type that yields data (or has more pages)
+          if (response.data.length > 0 || response.hasNextPage) {
+            break;
+          }
+        } catch (error) {
+          logger.warn(
+            { error, eventType },
+            'Failed to query audio submission events',
+          );
+        }
+      }
+
+      if (!audioEventsResponse) {
+        logger.error('Failed to query audio submission events');
+        return { datasets: [], hasMore: false };
+      }
 
       // Fetch objects for discovered IDs
       const audioObjectIds = audioEventsResponse.data
@@ -142,14 +190,34 @@ export class BlockchainIndexer {
         try {
           if (obj.data?.content?.dataType === 'moveObject') {
             const fields = obj.data.content.fields as any;
-            
+            const walrusBlobId = String(fields.walrus_blob_id || '');
+            const previewBlobId = String(fields.preview_blob_id || '');
+            const sealPolicyId = fields.seal_policy_id
+              ? String(fields.seal_policy_id)
+              : null;
+            const durationSeconds = parseNumberLike(fields.duration_seconds);
+
+            const blobs = walrusBlobId
+              ? [
+                  {
+                    file_index: 0,
+                    full_blob_id: walrusBlobId,
+                    preview_blob_id: previewBlobId,
+                    seal_policy_id: sealPolicyId,
+                    duration_seconds: durationSeconds,
+                    mime_type: 'audio/mpeg',
+                    preview_mime_type: null,
+                  },
+                ]
+              : [];
+
             datasets.push({
               id: obj.data.objectId,
               creator: fields.uploader,
               quality_score: parseInt(fields.quality_score || '0'),
               price: fields.dataset_price || '0',
               listed: fields.listed_for_sale !== false,
-              duration_seconds: parseInt(fields.duration_seconds || '0'),
+              duration_seconds: durationSeconds,
               languages: [], // Metadata comes from backend API
               formats: ['audio/mpeg'],
               media_type: 'audio',
@@ -157,8 +225,10 @@ export class BlockchainIndexer {
               description: '',
               total_purchases: parseInt(fields.purchase_count || '0'),
               file_count: 1,
-              total_duration: parseInt(fields.duration_seconds || '0'),
+              total_duration: durationSeconds,
               bundle_discount_bps: 0,
+              seal_policy_id: sealPolicyId,
+              blobs: blobs.length > 0 ? blobs : undefined,
             });
           }
         } catch (error) {
@@ -197,23 +267,55 @@ export class BlockchainIndexer {
         try {
           if (obj.data?.content?.dataType === 'moveObject') {
             const fields = obj.data.content.fields as any;
-            
+            const rawFiles = Array.isArray(fields.files) ? fields.files : [];
+            const blobs = rawFiles
+              .map((raw: any, index: number) => {
+                const entry = raw?.fields ?? raw;
+                const fullBlobId = entry?.blob_id ? String(entry.blob_id) : '';
+                if (!fullBlobId) return null;
+
+                return {
+                  file_index: index,
+                  full_blob_id: fullBlobId,
+                  preview_blob_id: entry?.preview_blob_id
+                    ? String(entry.preview_blob_id)
+                    : '',
+                  seal_policy_id: entry?.seal_policy_id
+                    ? String(entry.seal_policy_id)
+                    : null,
+                  duration_seconds: parseNumberLike(entry?.duration),
+                  mime_type: 'audio/mpeg',
+                  preview_mime_type: null,
+                };
+              })
+              .filter(Boolean) as NonNullable<BlockchainDataset['blobs']>;
+
+            const fileCount =
+              parseNumberLike(fields.file_count) || blobs.length || 1;
+            const totalDuration =
+              parseNumberLike(fields.total_duration) ||
+              blobs.reduce((sum, blob) => sum + blob.duration_seconds, 0);
+            const bundleDiscountBps = parseNumberLike(fields.bundle_discount_bps);
+            const sealPolicyId = blobs[0]?.seal_policy_id ?? null;
+
             datasets.push({
               id: obj.data.objectId,
               creator: fields.uploader,
               quality_score: parseInt(fields.quality_score || '0'),
               price: fields.dataset_price || '0',
               listed: fields.listed_for_sale !== false,
-              duration_seconds: parseInt(fields.total_duration || '0'),
+              duration_seconds: totalDuration,
               languages: [],
               formats: ['audio/mpeg'],
               media_type: 'audio',
               title: 'Untitled Dataset',
               description: '',
               total_purchases: parseInt(fields.purchase_count || '0'),
-              file_count: parseInt(fields.file_count || '1'),
-              total_duration: parseInt(fields.total_duration || '0'),
-              bundle_discount_bps: parseInt(fields.bundle_discount_bps || '0'),
+              file_count: fileCount,
+              total_duration: totalDuration,
+              bundle_discount_bps: bundleDiscountBps,
+              seal_policy_id: sealPolicyId,
+              blobs: blobs.length > 0 ? blobs : undefined,
             });
           }
         } catch (error) {
@@ -262,6 +364,7 @@ export class BlockchainIndexer {
           file_count: dataset.file_count || 1,
           total_duration: dataset.total_duration,
           bundle_discount_bps: dataset.bundle_discount_bps,
+          seal_policy_id: dataset.seal_policy_id ?? null,
           blockchain_synced_at: new Date(),
           indexed_at: embedding ? new Date() : null,
         },
@@ -280,6 +383,7 @@ export class BlockchainIndexer {
           file_count: dataset.file_count || 1,
           total_duration: dataset.total_duration,
           bundle_discount_bps: dataset.bundle_discount_bps,
+          seal_policy_id: dataset.seal_policy_id ?? null,
           blockchain_synced_at: new Date(),
           indexed_at: embedding ? new Date() : null,
         },
@@ -292,6 +396,38 @@ export class BlockchainIndexer {
           SET embedding = ${embedding}::vector
           WHERE id = ${dataset.id}
         `;
+      }
+
+      // Upsert blob mapping from on-chain Walrus IDs
+      if (dataset.blobs && dataset.blobs.length > 0) {
+        for (const blob of dataset.blobs) {
+          await this.prisma.datasetBlob.upsert({
+            where: {
+              dataset_id_file_index: {
+                dataset_id: dataset.id,
+                file_index: blob.file_index,
+              },
+            },
+            create: {
+              dataset_id: dataset.id,
+              file_index: blob.file_index,
+              full_blob_id: blob.full_blob_id,
+              preview_blob_id: blob.preview_blob_id || '',
+              seal_policy_id: blob.seal_policy_id,
+              duration_seconds: blob.duration_seconds,
+              mime_type: blob.mime_type,
+              preview_mime_type: blob.preview_mime_type,
+            },
+            update: {
+              full_blob_id: blob.full_blob_id,
+              preview_blob_id: blob.preview_blob_id || '',
+              seal_policy_id: blob.seal_policy_id,
+              duration_seconds: blob.duration_seconds,
+              mime_type: blob.mime_type,
+              preview_mime_type: blob.preview_mime_type,
+            },
+          });
+        }
       }
 
       logger.info({ datasetId: dataset.id }, 'Synced dataset from blockchain');
