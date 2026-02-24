@@ -18,7 +18,21 @@ import { getWalrusClient } from "@/lib/walrus/client";
 import { getWalBalance, formatWal } from "@/lib/sui/wal-coin-utils";
 import { estimateWalCost, walToMist } from "@/lib/sui/walrus-constants";
 
-export function useWalrusLifecycle() {
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+export function useWalrusLifecycle(): {
+  extendBlob: (blobObjectId: string, additionalEpochs: number) => Promise<{ digest: string }>;
+  deleteBlob: (blobObjectId: string) => Promise<{ digest: string }>;
+  transferBlob: (blobObjectId: string, recipientAddress: string) => Promise<{ digest: string }>;
+  getBlobMetadata: (blobObjectId: string) => Promise<{
+    blobId: string;
+    size: string;
+    encodingType: string;
+    endEpoch: string;
+    deletable: boolean;
+    storageId: string;
+    certifiedEpoch: string;
+  }>;
+} {
   const suiClient = useSuiClient();
   const currentAccount = useCurrentAccount();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
